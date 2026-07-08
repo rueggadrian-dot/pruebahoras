@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tecnosuisse · Control de Producción</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink: #1B2430;
+    --steel: #2B4C5C;
+    --steel-light: #3E6B7F;
+    --glass: #C7DDE3;
+    --concrete: #EDEEF0;
+    --paper: #F7F8F8;
+    --amber: #E8873A;
+    --amber-soft: #FCE6D2;
+    --red: #C4483A;
+    --red-soft: #F6DAD6;
+    --green: #4C7A5E;
+    --green-soft: #DCEBE0;
+    --line: #D8DBDD;
+    --radius: 4px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--concrete);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:920px;margin:0 auto;min-height:100vh;background:var(--paper);}
+  header.top{
+    background:var(--ink);
+    color:var(--paper);
+    padding:22px 20px 18px;
+    position:sticky;top:0;z-index:10;
+  }
+  header.top .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--glass);
+    opacity:.85;
+  }
+  header.top h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size:26px;
+    letter-spacing:.02em;
+    margin:2px 0 14px;
+    text-transform:uppercase;
+  }
+  nav.tabs{display:flex;gap:2px;background:rgba(255,255,255,.08);border-radius:var(--radius);padding:3px;}
+  nav.tabs button{
+    flex:1;
+    border:none;background:transparent;color:var(--glass);
+    font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.05em;text-transform:uppercase;
+    padding:9px 4px;border-radius:3px;cursor:pointer;
+    transition:background .15s,color .15s;
+  }
+  nav.tabs button.active{background:var(--paper);color:var(--ink);font-weight:600;}
+  main{padding:18px 20px 60px;}
+  .section-title{
+    font-family:'Oswald',sans-serif;font-weight:600;font-size:12px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--steel);
+    margin:26px 0 10px;display:flex;align-items:center;gap:8px;
+  }
+  .section-title:first-child{margin-top:2px;}
+  .section-title::after{content:"";flex:1;height:1px;background:var(--line);}
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:12px;
+  }
+  label{display:block;font-size:12px;font-weight:600;color:var(--steel);margin:12px 0 5px;letter-spacing:.02em;}
+  label:first-child{margin-top:0;}
+  select,input{
+    width:100%;padding:11px 10px;border:1px solid var(--line);border-radius:3px;
+    font-family:'Inter',sans-serif;font-size:15px;background:var(--concrete);color:var(--ink);
+  }
+  select:focus,input:focus{outline:2px solid var(--steel-light);outline-offset:0;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .btn{
+    font-family:'Oswald',sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;
+    text-transform:uppercase;border:none;border-radius:3px;padding:13px 18px;cursor:pointer;
+    background:var(--steel);color:var(--paper);width:100%;margin-top:16px;
+    transition:background .15s;
+  }
+  .btn:hover{background:var(--steel-light);}
+  .btn.ghost{background:transparent;color:var(--steel);border:1px solid var(--steel);}
+  .btn.small{width:auto;padding:8px 14px;font-size:11px;margin-top:0;}
+  .badge{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+    padding:3px 8px;border-radius:12px;letter-spacing:.02em;display:inline-block;
+  }
+  .b-vidrio{background:var(--glass);color:var(--steel);}
+  .b-carpinteria{background:#E7DFD0;color:#7A5A2E;}
+  .b-instalacion{background:#DDE3D6;color:#4C6236;}
+  .empty{
+    text-align:center;padding:36px 12px;color:#8A9399;font-size:14px;
+  }
+  .empty strong{display:block;color:var(--ink);font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:13px;margin-bottom:4px;letter-spacing:.05em;}
+  .list-item{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;
+  }
+  .list-item:last-child{border-bottom:none;}
+  .list-item .meta{color:#8A9399;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+  .del{background:none;border:none;color:#B4585A;cursor:pointer;font-size:12px;font-family:'IBM Plex Mono',monospace;padding:4px 8px;}
+  .gauge-wrap{margin:10px 0 4px;}
+  .gauge-head{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:6px;}
+  .gauge-head .pct{font-weight:700;font-size:14px;}
+  .gauge{
+    height:14px;background:var(--concrete);border-radius:7px;overflow:hidden;
+    border:1px solid var(--line);position:relative;
+  }
+  .gauge-fill{height:100%;border-radius:7px 0 0 7px;transition:width .3s;}
+  .gauge-ticks{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#A6ADB2;margin-top:3px;}
+  .status-ok .gauge-fill{background:var(--green);}
+  .status-warn .gauge-fill{background:var(--amber);}
+  .status-crit .gauge-fill{background:var(--red);}
+  .alert-banner{
+    display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:3px;
+    font-size:13px;margin-bottom:8px;border-left:3px solid;
+  }
+  .alert-warn{background:var(--amber-soft);border-color:var(--amber);color:#7A4A18;}
+  .alert-crit{background:var(--red-soft);border-color:var(--red);color:#7A2620;}
+  .alert-banner .tag{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:11px;text-transform:uppercase;}
+  .obra-select{
+    background:var(--steel);color:var(--paper);border-radius:3px;padding:14px;margin-bottom:14px;
+  }
+  .obra-select select{background:var(--ink);color:var(--paper);border-color:var(--steel-light);}
+  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .kpi{background:var(--ink);color:var(--paper);border-radius:3px;padding:14px;}
+  .kpi .val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;}
+  .kpi .lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--glass);margin-top:3px;}
+  .subtabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .subtabs button{
+    border:1px solid var(--line);background:var(--paper);color:var(--steel);
+    font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 12px;border-radius:14px;cursor:pointer;
+  }
+  .subtabs button.active{background:var(--steel);color:var(--paper);border-color:var(--steel);}
+  .transport-line{display:flex;align-items:center;gap:8px;margin:10px 0;}
+  .transport-line .dot{width:8px;height:8px;border-radius:50%;background:var(--steel-light);flex-shrink:0;}
+  .calc-box{
+    background:var(--concrete);border-radius:3px;padding:10px 12px;margin-top:12px;
+    font-family:'IBM Plex Mono',monospace;font-size:12px;display:flex;justify-content:space-between;
+  }
+  .footnote{font-size:11px;color:#8A93991;color:#8A9399;text-align:center;margin-top:30px;line-height:1.6;}
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:20px;
+    font-size:13px;font-family:'Inter',sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.25);
+    opacity:0;transition:opacity .25s;pointer-events:none;z-index:100;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="eyebrow">Tecnosuisse · Vidrio / Carpintería / Instalación</div>
+    <h1>Control de Producción</h1>
+    <nav class="tabs">
+      <button data-tab="captura" class="active">Captura</button>
+      <button data-tab="panel">Panel</button>
+      <button data-tab="config">Configurar</button>
+    </nav>
+  </header>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const AREAS = [
+  {id:'vidrio', nombre:'Vidrio', badge:'b-vidrio'},
+  {id:'carpinteria', nombre:'Carpintería', badge:'b-carpinteria'},
+  {id:'instalacion', nombre:'Instalación', badge:'b-instalacion'}
+];
+const ROLES = {
+  vidrio:['Jefe de Vidrio','Ayudante de Vidrio'],
+  carpinteria:['Jefe de Carpintería','Ayudante de Carpintería'],
+  instalacion:['Maestro de Obra','Ayudante de Instalación']
+};
+
+let DB = { obras:[], personas:[], ordenes:[], registros:[], instalaciones:[] };
+let currentTab = 'captura';
+let panelObraId = null;
+let configSub = 'obras';
+
+function uid(){ return crypto.randomUUID().slice(0,8); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+async function loadKey(key){
+  try{
+    const r = await window.storage.get(key, true);
+    return r ? JSON.parse(r.value) : [];
+  }catch(e){ return []; }
+}
+async function saveKey(key, value){
+  try{ await window.storage.set(key, JSON.stringify(value), true); }
+  catch(e){ console.error('storage error', key, e); toast('Error guardando datos'); }
+}
+async function loadAll(){
+  DB.obras = await loadKey('obras');
+  DB.personas = await loadKey('personas');
+  DB.ordenes = await loadKey('ordenes');
+  DB.registros = await loadKey('registros');
+  DB.instalaciones = await loadKey('instalaciones');
+}
+
+function areaInfo(id){ return AREAS.find(a=>a.id===id); }
+function obraNombre(id){ const o = DB.obras.find(x=>x.id===id); return o? o.nombre : '—'; }
+function personaNombre(id){ const p = DB.personas.find(x=>x.id===id); return p? p.nombre : '—'; }
+
+// ---------- CÁLCULOS ----------
+function horasArea(obraId, areaId){
+  return DB.registros.filter(r=>r.obraId===obraId && r.areaId===areaId)
+    .reduce((s,r)=>s + Number(r.horas||0), 0);
+}
+function piezasArea(obraId, areaId){
+  return DB.registros.filter(r=>r.obraId===obraId && r.areaId===areaId)
+    .reduce((s,r)=>s + Number(r.piezas||0), 0);
+}
+function horasInstalacion(obraId){
+  const regs = DB.instalaciones.filter(r=>r.obraId===obraId);
+  const transporte = regs.reduce((s,r)=>s + calcHoras(r.salida, r.llegada), 0);
+  const instalacion = regs.reduce((s,r)=>s + calcHoras(r.inicioInstalacion, r.finInstalacion), 0);
+  return { transporte, instalacion };
+}
+function calcHoras(h1, h2){
+  if(!h1 || !h2) return 0;
+  const [a1,m1] = h1.split(':').map(Number);
+  const [a2,m2] = h2.split(':').map(Number);
+  let diff = (a2*60+m2) - (a1*60+m1);
+  if(diff < 0) diff += 24*60;
+  return diff/60;
+}
+function ordenPresupuesto(obraId, areaId){
+  return DB.ordenes.find(o=>o.obraId===obraId && o.areaId===areaId);
+}
+function costoPersonaDia(personaId){
+  const p = DB.personas.find(x=>x.id===personaId);
+  return p ? Number(p.costoHora||0) : 0;
+}
+function costoTotalObra(obraId){
+  let total = 0;
+  DB.registros.filter(r=>r.obraId===obraId).forEach(r=>{
+    total += Number(r.horas||0) * costoPersonaDia(r.personaId);
+  });
+  DB.instalaciones.filter(r=>r.obraId===obraId).forEach(r=>{
+    const h = calcHoras(r.salida,r.llegada) + calcHoras(r.inicioInstalacion,r.finInstalacion);
+    total += h * costoPersonaDia(r.personaId);
+  });
+  return total;
+}
+function costoHoy(){
+  const hoy = new Date().toISOString().slice(0,10);
+  let total = 0;
+  DB.registros.filter(r=>r.fecha===hoy).forEach(r=>{ total += Number(r.horas||0) * costoPersonaDia(r.personaId); });
+  DB.instalaciones.filter(r=>r.fecha===hoy).forEach(r=>{
+    const h = calcHoras(r.salida,r.llegada) + calcHoras(r.inicioInstalacion,r.finInstalacion);
+    total += h * costoPersonaDia(r.personaId);
+  });
+  return total;
+}
+function statusFor(pct){
+  if(pct >= 100) return 'crit';
+  if(pct >= 80) return 'warn';
+  return 'ok';
+}
+
+// ---------- RENDER: CAPTURA ----------
+function renderCaptura(){
+  if(DB.personas.length === 0 || DB.obras.length === 0){
+    return `<div class="empty"><strong>Todavía no hay datos base</strong>
+      Cargá al menos una obra y una persona en la pestaña "Configurar" antes de registrar horas.</div>`;
+  }
+  return `
+  <div class="section-title">Quién registra</div>
+  <div class="card">
+    <label>Persona</label>
+    <select id="cap-persona">
+      <option value="">Seleccioná tu nombre…</option>
+      ${DB.personas.map(p=>`<option value="${p.id}">${p.nombre} — ${p.rol}</option>`).join('')}
+    </select>
+    <label>Obra</label>
+    <select id="cap-obra">
+      <option value="">Seleccioná la obra…</option>
+      ${DB.obras.map(o=>`<option value="${o.id}">${o.nombre}</option>`).join('')}
+    </select>
+    <label>Fecha</label>
+    <input type="date" id="cap-fecha" value="${new Date().toISOString().slice(0,10)}">
+  </div>
+  <div id="cap-form-dynamic"></div>
+  `;
+}
+
+function renderCapturaFormFor(personaId){
+  const persona = DB.personas.find(p=>p.id===personaId);
+  if(!persona) return '';
+  const area = persona.areaId;
+  if(area === 'instalacion'){
+    return `
+    <div class="section-title">Registro de instalación</div>
+    <div class="card">
+      <div class="transport-line"><div class="dot"></div><strong style="font-size:13px;">Transporte</strong></div>
+      <div class="row2">
+        <div><label>Hora de salida</label><input type="time" id="ins-salida"></div>
+        <div><label>Llegada a obra</label><input type="time" id="ins-llegada"></div>
+      </div>
+      <div class="transport-line" style="margin-top:16px;"><div class="dot" style="background:var(--steel);"></div><strong style="font-size:13px;">Instalación efectiva</strong></div>
+      <div class="row2">
+        <div><label>Inicio instalación</label><input type="time" id="ins-inicio"></div>
+        <div><label>Fin instalación</label><input type="time" id="ins-fin"></div>
+      </div>
+      <label>Notas (opcional)</label>
+      <input type="text" id="ins-notas" placeholder="Observaciones del día">
+      <button class="btn" onclick="guardarInstalacion()">Guardar registro</button>
+    </div>`;
+  }
+  return `
+  <div class="section-title">Registro de ${areaInfo(area).nombre.toLowerCase()}</div>
+  <div class="card">
+    <div class="row2">
+      <div><label>Horas trabajadas</label><input type="number" step="0.5" min="0" id="reg-horas" placeholder="8"></div>
+      <div><label>Piezas fabricadas</label><input type="number" step="1" min="0" id="reg-piezas" placeholder="0"></div>
+    </div>
+    <label>Notas (opcional)</label>
+    <input type="text" id="reg-notas" placeholder="Observaciones del día">
+    <button class="btn" onclick="guardarRegistro()">Guardar registro</button>
+  </div>`;
+}
+
+async function guardarRegistro(){
+  const personaId = document.getElementById('cap-persona').value;
+  const obraId = document.getElementById('cap-obra').value;
+  const fecha = document.getElementById('cap-fecha').value;
+  const horas = document.getElementById('reg-horas').value;
+  const piezas = document.getElementById('reg-piezas').value;
+  const notas = document.getElementById('reg-notas').value;
+  if(!personaId || !obraId || !fecha || !horas){ toast('Completá persona, obra, fecha y horas'); return; }
+  const persona = DB.personas.find(p=>p.id===personaId);
+  const reg = { id:uid(), personaId, obraId, areaId:persona.areaId, fecha, horas:Number(horas), piezas:Number(piezas||0), notas };
+  DB.registros.push(reg);
+  await saveKey('registros', DB.registros);
+  toast('Registro guardado ✓');
+  render();
+}
+async function guardarInstalacion(){
+  const personaId = document.getElementById('cap-persona').value;
+  const obraId = document.getElementById('cap-obra').value;
+  const fecha = document.getElementById('cap-fecha').value;
+  const salida = document.getElementById('ins-salida').value;
+  const llegada = document.getElementById('ins-llegada').value;
+  const inicioInstalacion = document.getElementById('ins-inicio').value;
+  const finInstalacion = document.getElementById('ins-fin').value;
+  const notas = document.getElementById('ins-notas').value;
+  if(!personaId || !obraId || !fecha){ toast('Completá persona, obra y fecha'); return; }
+  const reg = { id:uid(), personaId, obraId, fecha, salida, llegada, inicioInstalacion, finInstalacion, notas };
+  DB.instalaciones.push(reg);
+  await saveKey('instalaciones', DB.instalaciones);
+  toast('Registro guardado ✓');
+  render();
+}
+
+// ---------- RENDER: PANEL ----------
+function renderPanel(){
+  if(DB.obras.length === 0){
+    return `<div class="empty"><strong>No hay obras cargadas</strong>Andá a "Configurar" para crear la primera obra.</div>`;
+  }
+  if(!panelObraId) panelObraId = DB.obras[0].id;
+  const obra = DB.obras.find(o=>o.id===panelObraId);
+  const costoHoyVal = costoHoy();
+
+  let alerts = [];
+  ['vidrio','carpinteria'].forEach(areaId=>{
+    const orden = ordenPresupuesto(panelObraId, areaId);
+    if(orden){
+      const real = horasArea(panelObraId, areaId);
+      const pct = orden.horasPresupuestadas>0 ? (real/orden.horasPresupuestadas*100) : 0;
+      if(pct>=80) alerts.push({areaId, pct, tipo: pct>=100?'crit':'warn'});
+    }
+  });
+  const ordenIns = ordenPresupuesto(panelObraId,'instalacion');
+  if(ordenIns){
+    const {transporte,instalacion} = horasInstalacion(panelObraId);
+    const real = transporte+instalacion;
+    const pct = ordenIns.horasPresupuestadas>0 ? (real/ordenIns.horasPresupuestadas*100) : 0;
+    if(pct>=80) alerts.push({areaId:'instalacion', pct, tipo: pct>=100?'crit':'warn'});
+  }
+
+  let html = `
+  <div class="obra-select">
+    <label style="color:var(--glass);">Obra</label>
+    <select id="panel-obra-select" onchange="panelObraId=this.value; render();">
+      ${DB.obras.map(o=>`<option value="${o.id}" ${o.id===panelObraId?'selected':''}>${o.nombre}</option>`).join('')}
+    </select>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="val">$${costoTotalObra(panelObraId).toFixed(0)}</div><div class="lbl">Costo total obra</div></div>
+    <div class="kpi"><div class="val">$${costoHoyVal.toFixed(0)}</div><div class="lbl">Costo hoy (todas las obras)</div></div>
+  </div>`;
+
+  if(alerts.length){
+    html += `<div class="section-title">Alertas</div>`;
+    alerts.forEach(a=>{
+      html += `<div class="alert-banner alert-${a.tipo}">
+        <span class="tag">${a.tipo==='crit'?'⚠ Superado':'● Atención'}</span>
+        <span>${areaInfo(a.areaId).nombre}: ${a.pct.toFixed(0)}% de las horas presupuestadas consumidas.</span>
+      </div>`;
+    });
+  }
+
+  html += `<div class="section-title">Vidrio</div>` + gaugeBlock(panelObraId,'vidrio');
+  html += `<div class="section-title">Carpintería</div>` + gaugeBlock(panelObraId,'carpinteria');
+  html += `<div class="section-title">Instalación</div>` + instalacionBlock(panelObraId);
+
+  return html;
+}
+
+function gaugeBlock(obraId, areaId){
+  const orden = ordenPresupuesto(obraId, areaId);
+  const real = horasArea(obraId, areaId);
+  const piezasReal = piezasArea(obraId, areaId);
+  if(!orden){
+    return `<div class="card"><div class="empty" style="padding:14px 0;">Sin orden de producción cargada para esta área. Horas registradas hasta ahora: <strong>${real}h</strong> · Piezas: <strong>${piezasReal}</strong></div></div>`;
+  }
+  const pct = orden.horasPresupuestadas>0 ? Math.min(real/orden.horasPresupuestadas*100, 150) : 0;
+  const status = statusFor(pct);
+  return `<div class="card">
+    <div class="gauge-wrap">
+      <div class="gauge-head"><span>${real}h de ${orden.horasPresupuestadas}h presupuestadas</span><span class="pct">${(orden.horasPresupuestadas>0?(real/orden.horasPresupuestadas*100):0).toFixed(0)}%</span></div>
+      <div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div>
+      <div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div>
+    </div>
+    <div class="calc-box"><span>Piezas fabricadas</span><span>${piezasReal} / ${orden.piezasPresupuestadas||'—'}</span></div>
+  </div>`;
+}
+
+function instalacionBlock(obraId){
+  const orden = ordenPresupuesto(obraId, 'instalacion');
+  const {transporte, instalacion} = horasInstalacion(obraId);
+  const total = transporte + instalacion;
+  let gauge = '';
+  if(orden){
+    const pct = orden.horasPresupuestadas>0 ? Math.min(total/orden.horasPresupuestadas*100,150) : 0;
+    const status = statusFor(pct);
+    gauge = `<div class="gauge-wrap">
+      <div class="gauge-head"><span>${total.toFixed(1)}h de ${orden.horasPresupuestadas}h presupuestadas</span><span class="pct">${(orden.horasPresupuestadas>0?(total/orden.horasPresupuestadas*100):0).toFixed(0)}%</span></div>
+      <div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div>
+      <div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div>
+    </div>`;
+  }
+  return `<div class="card">
+    ${gauge}
+    <div class="calc-box"><span>Horas de transporte</span><span>${transporte.toFixed(1)}h</span></div>
+    <div class="calc-box" style="margin-top:6px;"><span>Horas de instalación efectiva</span><span>${instalacion.toFixed(1)}h</span></div>
+  </div>`;
+}
+
+// ---------- RENDER: CONFIG ----------
+function renderConfig(){
+  return `
+  <div class="subtabs">
+    <button class="${configSub==='obras'?'active':''}" onclick="configSub='obras';render();">Obras</button>
+    <button class="${configSub==='personas'?'active':''}" onclick="configSub='personas';render();">Personas</button>
+    <button class="${configSub==='ordenes'?'active':''}" onclick="configSub='ordenes';render();">Órdenes de producción</button>
+  </div>
+  ${configSub==='obras'?renderObrasConfig(): configSub==='personas'?renderPersonasConfig(): renderOrdenesConfig()}
+  `;
+}
+
+function renderObrasConfig(){
+  return `
+  <div class="card">
+    <label>Nombre de la obra</label>
+    <input type="text" id="new-obra-nombre" placeholder="Ej: Torre Aurora — Piso 8">
+    <label>Cliente</label>
+    <input type="text" id="new-obra-cliente" placeholder="Ej: Constructora Andina">
+    <button class="btn" onclick="crearObra()">Agregar obra</button>
+  </div>
+  <div class="section-title">Obras cargadas</div>
+  <div class="card">
+    ${DB.obras.length===0 ? '<div class="empty">Ninguna obra todavía</div>' :
+      DB.obras.map(o=>`<div class="list-item"><span>${o.nombre}<br><span class="meta">${o.cliente||'sin cliente'}</span></span><button class="del" onclick="borrarObra('${o.id}')">Eliminar</button></div>`).join('')}
+  </div>`;
+}
+async function crearObra(){
+  const nombre = document.getElementById('new-obra-nombre').value.trim();
+  const cliente = document.getElementById('new-obra-cliente').value.trim();
+  if(!nombre){ toast('Ingresá un nombre de obra'); return; }
+  DB.obras.push({id:uid(), nombre, cliente, fechaInicio:new Date().toISOString().slice(0,10)});
+  await saveKey('obras', DB.obras);
+  toast('Obra creada ✓'); render();
+}
+async function borrarObra(id){
+  DB.obras = DB.obras.filter(o=>o.id!==id);
+  await saveKey('obras', DB.obras);
+  render();
+}
+
+function renderPersonasConfig(){
+  return `
+  <div class="card">
+    <label>Nombre</label>
+    <input type="text" id="new-persona-nombre" placeholder="Ej: Marco Suárez">
+    <label>Área</label>
+    <select id="new-persona-area" onchange="updateRolOptions()">
+      ${AREAS.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('')}
+    </select>
+    <label>Rol</label>
+    <select id="new-persona-rol">${ROLES['vidrio'].map(r=>`<option>${r}</option>`).join('')}</select>
+    <label>Costo por hora ($)</label>
+    <input type="number" step="0.5" min="0" id="new-persona-costo" placeholder="Ej: 12.50">
+    <button class="btn" onclick="crearPersona()">Agregar persona</button>
+  </div>
+  <div class="section-title">Equipo cargado</div>
+  <div class="card">
+    ${DB.personas.length===0 ? '<div class="empty">Nadie cargado todavía</div>' :
+      DB.personas.map(p=>`<div class="list-item"><span><span class="badge ${areaInfo(p.areaId).badge}">${areaInfo(p.areaId).nombre}</span><br>${p.nombre} — ${p.rol}<br><span class="meta">$${p.costoHora}/h</span></span><button class="del" onclick="borrarPersona('${p.id}')">Eliminar</button></div>`).join('')}
+  </div>`;
+}
+function updateRolOptions(){
+  const area = document.getElementById('new-persona-area').value;
+  document.getElementById('new-persona-rol').innerHTML = ROLES[area].map(r=>`<option>${r}</option>`).join('');
+}
+async function crearPersona(){
+  const nombre = document.getElementById('new-persona-nombre').value.trim();
+  const areaId = document.getElementById('new-persona-area').value;
+  const rol = document.getElementById('new-persona-rol').value;
+  const costoHora = document.getElementById('new-persona-costo').value;
+  if(!nombre || !costoHora){ toast('Completá nombre y costo por hora'); return; }
+  DB.personas.push({id:uid(), nombre, areaId, rol, costoHora:Number(costoHora)});
+  await saveKey('personas', DB.personas);
+  toast('Persona agregada ✓'); render();
+}
+async function borrarPersona(id){
+  DB.personas = DB.personas.filter(p=>p.id!==id);
+  await saveKey('personas', DB.personas);
+  render();
+}
+
+function renderOrdenesConfig(){
+  if(DB.obras.length===0) return `<div class="empty"><strong>Cargá una obra primero</strong>Necesitás al menos una obra para asignar una orden de producción.</div>`;
+  return `
+  <div class="card">
+    <label>Obra</label>
+    <select id="new-orden-obra">${DB.obras.map(o=>`<option value="${o.id}">${o.nombre}</option>`).join('')}</select>
+    <label>Área</label>
+    <select id="new-orden-area">${AREAS.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('')}</select>
+    <div class="row2">
+      <div><label>Horas presupuestadas</label><input type="number" step="1" min="0" id="new-orden-horas" placeholder="Ej: 120"></div>
+      <div><label>Piezas presupuestadas</label><input type="number" step="1" min="0" id="new-orden-piezas" placeholder="Ej: 45"></div>
+    </div>
+    <button class="btn" onclick="crearOrden()">Cargar orden de producción</button>
+  </div>
+  <div class="section-title">Órdenes cargadas</div>
+  <div class="card">
+    ${DB.ordenes.length===0 ? '<div class="empty">Ninguna orden todavía</div>' :
+      DB.ordenes.map(o=>`<div class="list-item"><span><span class="badge ${areaInfo(o.areaId).badge}">${areaInfo(o.areaId).nombre}</span><br>${obraNombre(o.obraId)}<br><span class="meta">${o.horasPresupuestadas}h · ${o.piezasPresupuestadas||0} piezas</span></span><button class="del" onclick="borrarOrden('${o.id}')">Eliminar</button></div>`).join('')}
+  </div>`;
+}
+async function crearOrden(){
+  const obraId = document.getElementById('new-orden-obra').value;
+  const areaId = document.getElementById('new-orden-area').value;
+  const horasPresupuestadas = document.getElementById('new-orden-horas').value;
+  const piezasPresupuestadas = document.getElementById('new-orden-piezas').value;
+  if(!horasPresupuestadas){ toast('Ingresá las horas presupuestadas'); return; }
+  const existente = DB.ordenes.find(o=>o.obraId===obraId && o.areaId===areaId);
+  if(existente){
+    existente.horasPresupuestadas = Number(horasPresupuestadas);
+    existente.piezasPresupuestadas = Number(piezasPresupuestadas||0);
+  } else {
+    DB.ordenes.push({id:uid(), obraId, areaId, horasPresupuestadas:Number(horasPresupuestadas), piezasPresupuestadas:Number(piezasPresupuestadas||0)});
+  }
+  await saveKey('ordenes', DB.ordenes);
+  toast('Orden guardada ✓'); render();
+}
+async function borrarOrden(id){
+  DB.ordenes = DB.ordenes.filter(o=>o.id!==id);
+  await saveKey('ordenes', DB.ordenes);
+  render();
+}
+
+// ---------- MAIN RENDER ----------
+function render(){
+  const main = document.getElementById('main');
+  if(currentTab==='captura') main.innerHTML = renderCaptura();
+  else if(currentTab==='panel') main.innerHTML = renderPanel();
+  else main.innerHTML = renderConfig();
+
+  main.innerHTML += `<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v1</div>`;
+
+  if(currentTab==='captura'){
+    const sel = document.getElementById('cap-persona');
+    if(sel) sel.addEventListener('change', ()=>{
+      document.getElementById('cap-form-dynamic').innerHTML = renderCapturaFormFor(sel.value);
+    });
+  }
+}
+
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTab = btn.dataset.tab;
+    render();
+  });
+});
+
+(async function init(){
+  await loadAll();
+  render();
+})();
+</script>
+</body>
+</html>
