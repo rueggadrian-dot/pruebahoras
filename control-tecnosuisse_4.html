@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tecnosuisse · Control de Producción</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2430;--steel:#2B4C5C;--steel-light:#3E6B7F;--glass:#C7DDE3;
+    --concrete:#EDEEF0;--paper:#F7F8F8;--amber:#E8873A;--amber-soft:#FCE6D2;
+    --red:#C4483A;--red-soft:#F6DAD6;--green:#4C7A5E;--green-soft:#DCEBE0;
+    --line:#D8DBDD;--radius:4px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--concrete);color:var(--ink);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  .app{max-width:960px;margin:0 auto;min-height:100vh;background:var(--paper);}
+  header.top{background:var(--ink);color:var(--paper);padding:20px 18px 16px;position:sticky;top:0;z-index:10;}
+  header.top .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--glass);opacity:.85;}
+  header.top h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:24px;letter-spacing:.02em;margin:2px 0 12px;text-transform:uppercase;}
+  nav.tabs{display:flex;gap:2px;background:rgba(255,255,255,.08);border-radius:var(--radius);padding:3px;}
+  nav.tabs button{flex:1;border:none;background:transparent;color:var(--glass);font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.03em;text-transform:uppercase;padding:9px 3px;border-radius:3px;cursor:pointer;}
+  nav.tabs button.active{background:var(--paper);color:var(--ink);font-weight:600;}
+  main{padding:16px 18px 60px;}
+  .section-title{font-family:'Oswald',sans-serif;font-weight:600;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--steel);margin:24px 0 10px;display:flex;align-items:center;gap:8px;}
+  .section-title:first-child{margin-top:2px;}
+  .section-title::after{content:"";flex:1;height:1px;background:var(--line);}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px;}
+  label{display:block;font-size:12px;font-weight:600;color:var(--steel);margin:12px 0 5px;letter-spacing:.02em;}
+  label:first-child{margin-top:0;}
+  select,input{width:100%;padding:11px 10px;border:1px solid var(--line);border-radius:3px;font-family:'Inter',sans-serif;font-size:15px;background:var(--concrete);color:var(--ink);}
+  input[type=checkbox]{width:auto;accent-color:var(--steel);}
+  select:focus,input:focus{outline:2px solid var(--steel-light);outline-offset:0;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .btn{font-family:'Oswald',sans-serif;font-weight:600;font-size:13px;letter-spacing:.06em;text-transform:uppercase;border:none;border-radius:3px;padding:13px 18px;cursor:pointer;background:var(--steel);color:var(--paper);width:100%;margin-top:16px;}
+  .btn:hover{background:var(--steel-light);}
+  .btn:disabled{background:#C3CACD;color:#8B9296;cursor:not-allowed;}
+  .btn.small{width:auto;padding:8px 12px;font-size:11px;margin-top:0;}
+  .btn.ghost{background:transparent;color:var(--steel);border:1px solid var(--steel);}
+  .check-row{display:flex;align-items:center;gap:8px;font-weight:400;text-transform:none;letter-spacing:0;font-size:14px;padding:7px 0;border-bottom:1px solid var(--line);color:var(--ink);}
+  .check-row:last-child{border-bottom:none;}
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;padding:3px 8px;border-radius:12px;letter-spacing:.02em;display:inline-block;}
+  .b-vidrio{background:var(--glass);color:var(--steel);}
+  .b-carpinteria{background:#E7DFD0;color:#7A5A2E;}
+  .b-instalacion{background:#DDE3D6;color:#4C6236;}
+  .empty{text-align:center;padding:36px 12px;color:#8A9399;font-size:14px;}
+  .empty strong{display:block;color:var(--ink);font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:13px;margin-bottom:4px;letter-spacing:.05em;}
+  .list-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;gap:10px;}
+  .list-item:last-child{border-bottom:none;}
+  .list-item .meta{color:#8A9399;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+  .del{background:none;border:none;color:#B4585A;cursor:pointer;font-size:12px;font-family:'IBM Plex Mono',monospace;padding:4px 8px;}
+  .gauge-wrap{margin:10px 0 4px;}
+  .gauge-head{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:6px;}
+  .gauge-head .pct{font-weight:700;font-size:14px;}
+  .gauge{height:14px;background:var(--concrete);border-radius:7px;overflow:hidden;border:1px solid var(--line);}
+  .gauge-fill{height:100%;border-radius:7px 0 0 7px;transition:width .3s;}
+  .gauge-ticks{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#A6ADB2;margin-top:3px;}
+  .status-ok .gauge-fill{background:var(--green);}
+  .status-warn .gauge-fill{background:var(--amber);}
+  .status-crit .gauge-fill{background:var(--red);}
+  .alert-banner{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:3px;font-size:13px;margin-bottom:8px;border-left:3px solid;}
+  .alert-warn{background:var(--amber-soft);border-color:var(--amber);color:#7A4A18;}
+  .alert-crit{background:var(--red-soft);border-color:var(--red);color:#7A2620;}
+  .alert-banner .tag{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:11px;text-transform:uppercase;}
+  .obra-select{background:var(--steel);color:var(--paper);border-radius:3px;padding:14px;margin-bottom:14px;}
+  .obra-select select{background:var(--ink);color:var(--paper);border-color:var(--steel-light);}
+  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .kpi{background:var(--ink);color:var(--paper);border-radius:3px;padding:14px;}
+  .kpi .val{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;}
+  .kpi .lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--glass);margin-top:3px;}
+  .subtabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .subtabs button{border:1px solid var(--line);background:var(--paper);color:var(--steel);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 12px;border-radius:14px;cursor:pointer;}
+  .subtabs button.active{background:var(--steel);color:var(--paper);border-color:var(--steel);}
+  .calc-box{background:var(--concrete);border-radius:3px;padding:10px 12px;margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:12px;display:flex;justify-content:space-between;}
+  .footnote{font-size:11px;color:#8A9399;text-align:center;margin-top:30px;line-height:1.6;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:11px 20px;border-radius:20px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.25);opacity:0;transition:opacity .25s;pointer-events:none;z-index:100;max-width:86%;text-align:center;}
+  .toast.show{opacity:1;}
+  .step-done{background:var(--green-soft);border:1px solid var(--green);color:#2F5A40;padding:12px 14px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:flex;justify-content:space-between;margin-bottom:10px;}
+  .step-pending{background:var(--concrete);border:1px dashed var(--line);color:#8A9399;padding:12px 14px;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:10px;text-align:center;}
+  .trip-summary{background:var(--concrete);border-radius:3px;padding:12px 14px;margin-bottom:10px;font-size:13px;}
+  .trip-summary .t-row{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:3px 0;}
+  .area-mini{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .area-mini:last-child{border-bottom:none;}
+  .totales-box{background:var(--ink);color:var(--paper);border-radius:3px;padding:12px 14px;margin-bottom:12px;font-family:'IBM Plex Mono',monospace;font-size:13px;display:flex;justify-content:space-between;}
+  .chip{display:inline-block;background:var(--glass);color:var(--steel);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 9px;border-radius:12px;margin:3px 4px 0 0;}
+  .chip.out{background:#F0D8D6;color:#8A3B33;}
+  .report-card{border-radius:var(--radius);padding:14px;margin-bottom:10px;border:1px solid var(--line);border-left:4px solid var(--line);}
+  .report-card.rc-ok{border-left-color:var(--green);}
+  .report-card.rc-warn{border-left-color:var(--amber);background:#FFFBF6;}
+  .report-card.rc-crit{border-left-color:var(--red);background:#FFF9F8;}
+  .report-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .report-head .name{font-family:'Oswald',sans-serif;font-weight:600;font-size:14px;text-transform:uppercase;letter-spacing:.02em;}
+  .report-head .horas{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;}
+  .flag-line{font-size:12px;margin:3px 0;padding:3px 0;}
+  .flag-line.f-crit{color:#A5342B;}
+  .flag-line.f-warn{color:#9A5A17;}
+  .detail-item{background:var(--concrete);border-radius:3px;padding:10px 12px;margin-top:8px;font-size:13px;}
+  .detail-item .drow{display:flex;justify-content:space-between;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:4px;}
+  .actions{display:flex;gap:6px;margin-top:8px;}
+  .journey-track{display:flex;justify-content:space-between;margin:10px 0 4px;position:relative;}
+  .journey-track .jstep{flex:1;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#A6ADB2;text-transform:uppercase;letter-spacing:.03em;}
+  .journey-track .jstep.done{color:var(--green);font-weight:600;}
+  .stackbar-wrap{margin:8px 0 4px;}
+  .stackbar{position:relative;height:16px;background:var(--concrete);border:1px solid var(--line);border-radius:3px;overflow:visible;}
+  .stack-seg{position:absolute;top:0;height:100%;}
+  .stack-tick{position:absolute;top:-3px;bottom:-3px;left:100%;width:2px;background:var(--ink);}
+  .stackbar-legend{display:flex;flex-wrap:wrap;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="eyebrow">Tecnosuisse · Vidrio / Carpintería / Instalación</div>
+    <h1>Control de Producción</h1>
+    <nav class="tabs">
+      <button data-tab="captura" class="active">Captura</button>
+      <button data-tab="panel">Panel</button>
+      <button data-tab="reportes">Reportes</button>
+      <button data-tab="config">Config</button>
+    </nav>
+  </header>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const AREAS=[{id:'vidrio',nombre:'Vidrio',badge:'b-vidrio'},{id:'carpinteria',nombre:'Carpintería',badge:'b-carpinteria'},{id:'instalacion',nombre:'Instalación',badge:'b-instalacion'}];
+const ROLES={vidrio:['Jefe de Vidrio','Ayudante de Vidrio'],carpinteria:['Jefe de Carpintería','Ayudante de Carpintería'],instalacion:['Maestro de Obra','Ayudante de Instalación']};
+const JEFE_ROLES=['Jefe de Vidrio','Jefe de Carpintería','Maestro de Obra'];
+const ALMUERZO=0.5;
+const PALETA=['#2B4C5C','#E8873A','#4C7A5E','#8A5FA0','#C4483A','#3E6B7F','#B08D3E','#5C7A8A','#7A5A2E','#4C6236'];
+const ADMIN_PASS='admintecno';
+
+let DB={obras:[],personas:[],presupuestos:[],registros:[],instalaciones:[],ajustes:{costoHora:0,jornadaEstandar:9.5}};
+let currentTab='captura';
+let panelObraId=null;
+let configSub='obras';
+let presupuestoObraId=null;
+let reportesFecha=null;
+let reportEditKey=null;
+let authenticated=false;
+
+function uid(){ return crypto.randomUUID().slice(0,8); }
+function todayStr(){ return new Date().toLocaleDateString('en-CA'); }
+function yesterdayStr(){ return new Date(Date.now()-86400000).toLocaleDateString('en-CA'); }
+function nowTime(){ return new Date().toTimeString().slice(0,5); }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800); }
+function esJefeRol(rol){ return JEFE_ROLES.includes(rol); }
+
+async function loadKey(key,fallback){
+  try{ const r=await window.storage.get(key,true); return r?JSON.parse(r.value):(fallback!==undefined?fallback:[]); }
+  catch(e){ return fallback!==undefined?fallback:[]; }
+}
+async function saveKey(key,value){
+  try{ await window.storage.set(key,JSON.stringify(value),true); }
+  catch(e){ console.error('storage error',key,e); toast('Error guardando datos'); }
+}
+async function loadAll(){
+  DB.obras=await loadKey('obras');
+  DB.personas=await loadKey('personas');
+  DB.presupuestos=await loadKey('presupuestos');
+  DB.registros=await loadKey('registros');
+  DB.instalaciones=await loadKey('instalaciones');
+  DB.ajustes=await loadKey('ajustes',{costoHora:0,jornadaEstandar:9.5});
+  if(DB.ajustes.jornadaEstandar===undefined) DB.ajustes.jornadaEstandar=9.5;
+}
+
+function areaInfo(id){ return AREAS.find(a=>a.id===id); }
+function obraNombre(id){ const o=DB.obras.find(x=>x.id===id); return o?o.nombre:'—'; }
+function personaNombre(id){ const p=DB.personas.find(x=>x.id===id); return p?p.nombre:'—'; }
+function colorForObra(obraId){ const i=DB.obras.findIndex(o=>o.id===obraId); return PALETA[(i<0?0:i)%PALETA.length]; }
+
+// ---------- CÁLCULOS ----------
+function calcHoras(h1,h2){
+  if(!h1||!h2) return 0;
+  const [a1,m1]=h1.split(':').map(Number),[a2,m2]=h2.split(':').map(Number);
+  let diff=(a2*60+m2)-(a1*60+m1); if(diff<0) diff+=24*60; return diff/60;
+}
+function contarPersonas(r){ return (r.ayudantesIds||[]).length + (r.incluyeJefe?1:0); }
+function horasArea(obraId,areaId){
+  return DB.registros.filter(r=>r.obraId===obraId&&r.areaId===areaId).reduce((s,r)=>s+Number(r.horas||0)*contarPersonas(r),0);
+}
+function piezasArea(obraId,areaId){
+  return DB.registros.filter(r=>r.obraId===obraId&&r.areaId===areaId).reduce((s,r)=>s+Number(r.piezas||0),0);
+}
+// Equipo (Set) presente en cada instante durante [llegada, salidaObra]
+function segmentosTrabajo(r){
+  if(!r.llegada) return [];
+  const fin=r.salidaObra||null;
+  let team=new Set(r.ayudantesIds||[]); if(r.incluyeJefe) team.add(r.personaId);
+  const cambios=(r.cambios||[]).slice().sort((a,b)=>a.hora.localeCompare(b.hora));
+  let segments=[],prevHora=r.llegada;
+  cambios.forEach(c=>{
+    if(fin && c.hora>=fin) return;
+    if(c.hora<=prevHora) return;
+    segments.push({inicio:prevHora,fin:c.hora,size:team.size});
+    if(c.tipo==='incorporacion') team.add(c.personaId); else team.delete(c.personaId);
+    prevHora=c.hora;
+  });
+  if(fin) segments.push({inicio:prevHora,fin,size:team.size});
+  return segments;
+}
+function horasHombreTrabajoNeto(r){
+  const segs=segmentosTrabajo(r);
+  const bruto=segs.reduce((s,seg)=>s+calcHoras(seg.inicio,seg.fin)*seg.size,0);
+  const duracionBruta=calcHoras(r.llegada,r.salidaObra);
+  if(duracionBruta<=0) return 0;
+  const avgTeam=bruto/duracionBruta;
+  return Math.max(bruto-avgTeam*ALMUERZO,0);
+}
+function miembrosActuales(r){
+  let set=new Set(r.ayudantesIds||[]); if(r.incluyeJefe) set.add(r.personaId);
+  (r.cambios||[]).slice().sort((a,b)=>a.hora.localeCompare(b.hora)).forEach(c=>{ if(c.tipo==='incorporacion') set.add(c.personaId); else set.delete(c.personaId); });
+  return set;
+}
+function horasInstalacionDetalle(obraId){
+  const regs=DB.instalaciones.filter(r=>r.obraId===obraId);
+  let ida=0,vuelta=0,trabajo=0;
+  regs.forEach(r=>{
+    ida += calcHoras(r.salida,r.llegada)*contarPersonas(r);
+    const segs=segmentosTrabajo(r);
+    const sizeAlFinal = segs.length? segs[segs.length-1].size : contarPersonas(r);
+    vuelta += calcHoras(r.salidaObra,r.llegadaTaller)*sizeAlFinal;
+    trabajo += horasHombreTrabajoNeto(r);
+  });
+  return {ida,vuelta,trabajo};
+}
+function horasHombreTotalesObra(obraId){
+  const ins=horasInstalacionDetalle(obraId);
+  return horasArea(obraId,'vidrio')+horasArea(obraId,'carpinteria')+ins.ida+ins.vuelta+ins.trabajo;
+}
+function presupuestoTotales(obraId){
+  return DB.presupuestos.filter(p=>p.obraId===obraId).reduce((acc,p)=>({horas:acc.horas+Number(p.horas||0),monto:acc.monto+Number(p.monto||0)}),{horas:0,monto:0});
+}
+function costoTotalObra(obraId){ return horasHombreTotalesObra(obraId)*Number(DB.ajustes.costoHora||0); }
+function costoHoy(){
+  const hoy=todayStr(), rate=Number(DB.ajustes.costoHora||0); let hh=0;
+  DB.registros.filter(r=>r.fecha===hoy).forEach(r=>{ hh+=Number(r.horas||0)*contarPersonas(r); });
+  DB.instalaciones.filter(r=>r.fecha===hoy).forEach(r=>{
+    const segs=segmentosTrabajo(r); const sizeFin=segs.length?segs[segs.length-1].size:contarPersonas(r);
+    hh += calcHoras(r.salida,r.llegada)*contarPersonas(r) + calcHoras(r.salidaObra,r.llegadaTaller)*sizeFin + horasHombreTrabajoNeto(r);
+  });
+  return hh*rate;
+}
+function statusFor(pct){ if(pct>=100) return 'crit'; if(pct>=80) return 'warn'; return 'ok'; }
+
+// Horas personales (de UNA persona) trabajadas en un registro de instalación
+function personaSegmentoInstalacion(r,personaId){
+  const initial=new Set(r.ayudantesIds||[]); if(r.incluyeJefe) initial.add(r.personaId);
+  const presentAtStart=initial.has(personaId);
+  if(!r.llegada||!r.salidaObra) return {presentAtStart,presentAtEnd:presentAtStart,workHours:0};
+  let present=presentAtStart, start=presentAtStart?r.llegada:null, total=0;
+  const cambios=(r.cambios||[]).filter(c=>c.personaId===personaId && c.hora>r.llegada && c.hora<r.salidaObra).sort((a,b)=>a.hora.localeCompare(b.hora));
+  cambios.forEach(c=>{
+    if(c.tipo==='incorporacion'&&!present){present=true;start=c.hora;}
+    else if(c.tipo==='salida'&&present){ total+=calcHoras(start,c.hora); present=false; start=null; }
+  });
+  if(present) total+=calcHoras(start,r.salidaObra);
+  return {presentAtStart,presentAtEnd:present,workHours:total};
+}
+function horasPersonalesInstalacion(r,personaId){
+  const seg=personaSegmentoInstalacion(r,personaId);
+  let total=0;
+  if(seg.presentAtStart) total+=calcHoras(r.salida,r.llegada);
+  total+=Math.max(seg.workHours-ALMUERZO,0);
+  if(seg.presentAtEnd) total+=calcHoras(r.salidaObra,r.llegadaTaller);
+  return total;
+}
+function personaHorasHoyExistente(personaId,fecha){
+  let total=0;
+  DB.registros.filter(r=>r.fecha===fecha).forEach(r=>{
+    if((r.incluyeJefe&&r.personaId===personaId)||(r.ayudantesIds||[]).includes(personaId)) total+=Number(r.horas||0);
+  });
+  DB.instalaciones.filter(r=>r.fecha===fecha).forEach(r=>{ total+=horasPersonalesInstalacion(r,personaId); });
+  return total;
+}
+function desglosePersonaFecha(personaId,fecha){
+  const map={};
+  DB.registros.filter(r=>r.fecha===fecha && ((r.incluyeJefe&&r.personaId===personaId)||(r.ayudantesIds||[]).includes(personaId))).forEach(r=>{
+    map[r.obraId]=(map[r.obraId]||0)+Number(r.horas||0);
+  });
+  DB.instalaciones.filter(r=>r.fecha===fecha).forEach(r=>{
+    const h=horasPersonalesInstalacion(r,personaId);
+    if(h>0) map[r.obraId]=(map[r.obraId]||0)+h;
+  });
+  return map;
+}
+
+// ---------- CONTRASEÑA ----------
+function renderPasswordGate(){
+  return `<div class="card">
+    <label>Esta sección está protegida</label>
+    <input type="password" id="admin-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter') checkPassword();">
+    <button class="btn" onclick="checkPassword()">Ingresar</button>
+  </div>
+  <div class="empty" style="padding:6px 0;">Filtro simple para evitar entradas accidentales al panel de costos. No reemplaza un login real.</div>`;
+}
+function checkPassword(){
+  const val=document.getElementById('admin-pass').value;
+  if(val===ADMIN_PASS){ authenticated=true; render(); }
+  else toast('Contraseña incorrecta');
+}
+
+// ---------- CAPTURA ----------
+function renderCaptura(){
+  if(DB.personas.filter(p=>esJefeRol(p.rol)).length===0||DB.obras.length===0){
+    return `<div class="empty"><strong>Todavía no hay datos base</strong>Cargá al menos una obra y un jefe de área en "Config → Equipos" (requiere contraseña).</div>`;
+  }
+  const jefes=DB.personas.filter(p=>esJefeRol(p.rol));
+  return `
+  <div class="section-title">Quién registra</div>
+  <div class="card">
+    <label>Jefe de área</label>
+    <select id="cap-persona"><option value="">Seleccioná tu nombre…</option>${jefes.map(p=>`<option value="${p.id}">${p.nombre} — ${p.rol}</option>`).join('')}</select>
+    <label>Obra</label>
+    <select id="cap-obra"><option value="">Seleccioná la obra…</option>${DB.obras.map(o=>`<option value="${o.id}">${o.nombre}</option>`).join('')}</select>
+  </div>
+  <div id="cap-form-dynamic"></div>`;
+}
+function renderCapturaFormFor(personaId,obraId){
+  const persona=DB.personas.find(p=>p.id===personaId);
+  if(!persona) return '';
+  if(persona.areaId==='instalacion') return renderInstalacionFlow(personaId,obraId);
+  if(!obraId) return `<div class="empty" style="padding:20px 0;">Seleccioná la obra para continuar.</div>`;
+  const ayudantes=DB.personas.filter(p=>p.areaId===persona.areaId && !esJefeRol(p.rol));
+  return `
+  <div class="section-title">Registro de ${areaInfo(persona.areaId).nombre.toLowerCase()} · ${obraNombre(obraId)} · ${todayStr()}</div>
+  <div class="card">
+    <label>¿Quiénes trabajaron en esta obra hoy?</label>
+    ${ayudantes.length===0?'<div class="empty" style="padding:10px 0;">No hay ayudantes cargados para esta área. Andá a Config → Equipos.</div>':
+      ayudantes.map(a=>`<label class="check-row"><input type="checkbox" class="ayu-check" value="${a.id}"> ${a.nombre}</label>`).join('')}
+    <label class="check-row" style="margin-top:8px;"><input type="checkbox" id="reg-incluye-jefe"> Me incluyo yo también (${persona.nombre})</label>
+    <div class="row2" style="margin-top:14px;">
+      <div><label>Horas trabajadas</label><input type="number" step="0.5" min="0" id="reg-horas" placeholder="8"></div>
+      <div><label>Piezas fabricadas</label><input type="number" step="1" min="0" id="reg-piezas" placeholder="0"></div>
+    </div>
+    <label>Notas (opcional)</label><input type="text" id="reg-notas" placeholder="Observaciones del día">
+    <button class="btn" onclick="guardarRegistro('${personaId}','${obraId}')">Guardar registro de esta obra</button>
+  </div>
+  <div class="empty" style="padding:4px 0 14px;">¿Trabajaron también en otra obra hoy? Cambiá la obra arriba y cargá otro registro — podés hacer varios por día.</div>`;
+}
+async function guardarRegistro(personaId,obraId){
+  const persona=DB.personas.find(p=>p.id===personaId);
+  const ayudantesIds=Array.from(document.querySelectorAll('.ayu-check:checked')).map(el=>el.value);
+  const incluyeJefe=document.getElementById('reg-incluye-jefe').checked;
+  const horas=document.getElementById('reg-horas').value, piezas=document.getElementById('reg-piezas').value, notas=document.getElementById('reg-notas').value;
+  if((ayudantesIds.length+((incluyeJefe)?1:0))===0){ toast('Seleccioná al menos una persona (ayudante o vos mismo)'); return; }
+  if(!horas){ toast('Ingresá las horas trabajadas'); return; }
+  const fecha=todayStr();
+  DB.registros.push({id:uid(),personaId,obraId,areaId:persona.areaId,fecha,horas:Number(horas),ayudantesIds,incluyeJefe,piezas:Number(piezas||0),notas});
+  await saveKey('registros',DB.registros);
+  const jornada=Number(DB.ajustes.jornadaEstandar||9.5);
+  const involved=[...ayudantesIds]; if(incluyeJefe) involved.push(personaId);
+  const avisos=involved.map(pid=>({pid,t:personaHorasHoyExistente(pid,fecha)})).filter(x=>x.t>jornada+0.01);
+  if(avisos.length) toast('⚠ Revisar: '+avisos.map(a=>personaNombre(a.pid)+' ('+a.t.toFixed(1)+'h)').join(', '));
+  else toast('Registro guardado ✓');
+  render();
+}
+
+// ---------- INSTALACIÓN ----------
+function ultimoRegistroHoy(personaId,obraId){
+  const hoy=todayStr();
+  const regs=DB.instalaciones.filter(r=>r.personaId===personaId&&r.obraId===obraId&&r.fecha===hoy);
+  return regs.length?regs[regs.length-1]:null;
+}
+function chipsCambios(r){
+  if(!r.cambios||r.cambios.length===0) return '';
+  return r.cambios.map(c=>`<span class="chip ${c.tipo==='salida'?'out':''}">${c.hora} · ${c.tipo==='incorporacion'?'+':'-'} ${personaNombre(c.personaId)}</span>`).join('');
+}
+function tripCompleto(r){ return r&&r.salida&&r.llegada&&r.salidaObra&&r.llegadaTaller; }
+function renderInstalacionFlow(personaId,obraId){
+  if(!obraId){ return `<div class="section-title">Registro de instalación</div><div class="empty" style="padding:20px 0;">Seleccioná la obra para empezar a registrar horarios.</div>`; }
+  const ult=ultimoRegistroHoy(personaId,obraId);
+  const persona=DB.personas.find(p=>p.id===personaId);
+  const ayudantes=DB.personas.filter(p=>p.areaId==='instalacion' && !esJefeRol(p.rol));
+
+  let previas='';
+  const todasHoy=DB.instalaciones.filter(r=>r.personaId===personaId&&r.obraId===obraId&&r.fecha===todayStr()&&tripCompleto(r));
+  if(todasHoy.length){
+    previas=todasHoy.map(r=>{
+      const ida=calcHoras(r.salida,r.llegada), vuelta=calcHoras(r.salidaObra,r.llegadaTaller), trabajo=horasHombreTrabajoNeto(r);
+      return `<div class="trip-summary">
+      <div class="t-row"><span>Equipo inicial</span><span>${contarPersonas(r)} persona(s)</span></div>
+      <div class="t-row"><span>Salida taller → Llegada obra</span><span>${r.salida} → ${r.llegada} (${ida.toFixed(1)}h)</span></div>
+      <div class="t-row"><span>Trabajo neto en obra (horas-hombre)</span><span>${trabajo.toFixed(1)}h</span></div>
+      <div class="t-row"><span>Salida obra → Llegada taller</span><span>${r.salidaObra} → ${r.llegadaTaller} (${vuelta.toFixed(1)}h)</span></div>
+      ${chipsCambios(r)?`<div style="margin-top:6px;">${chipsCambios(r)}</div>`:''}
+    </div>`;}).join('');
+  }
+  const track=(activo)=>`<div class="journey-track"><div class="jstep ${activo>=1?'done':''}">Taller</div><div class="jstep ${activo>=2?'done':''}">→ Obra</div><div class="jstep ${activo>=3?'done':''}">Trabajo</div><div class="jstep ${activo>=4?'done':''}">→ Taller</div></div>`;
+
+  if(!ult||tripCompleto(ult)){
+    return `<div class="section-title">Registro de instalación · ${todayStr()}</div>
+    ${previas?`<div class="section-title" style="margin-top:0;">Viajes registrados hoy</div>${previas}`:''}
+    <div class="card">${track(0)}
+      <label>¿Quiénes van hacia la obra?</label>
+      ${ayudantes.length===0?'<div class="empty" style="padding:10px 0;">No hay ayudantes cargados para instalación. Andá a Config → Equipos.</div>':
+        ayudantes.map(a=>`<label class="check-row"><input type="checkbox" class="ayu-check-ins" value="${a.id}"> ${a.nombre}</label>`).join('')}
+      <label class="check-row" style="margin-top:8px;"><input type="checkbox" id="ins-incluye-jefe"> Me incluyo yo también (${persona.nombre})</label>
+      <button class="btn" onclick="registrarSalidaTaller('${personaId}','${obraId}')">▶ Registrar salida hacia obra</button>
+    </div>`;
+  }
+  if(ult.salida&&!ult.llegada){
+    return `<div class="section-title">Registro de instalación · ${todayStr()}</div>
+    <div class="card">${track(1)}
+      <div class="step-done"><span>Salida hacia obra</span><span>${ult.salida}</span></div>
+      <div class="step-pending">Esperando llegada a obra… (equipo: ${contarPersonas(ult)} personas)</div>
+      <button class="btn" onclick="registrarLlegadaObra('${personaId}','${obraId}')">📍 Registrar llegada a obra</button>
+    </div>`;
+  }
+  if(ult.llegada&&!ult.salidaObra){
+    const currentSet=miembrosActuales(ult);
+    const rosterConJefe=[...ayudantes, ...(esJefeRol(persona.rol)?[persona]:[])];
+    const filas=rosterConJefe.map(p=>{
+      const inTeam=currentSet.has(p.id);
+      return `<div class="check-row"><span>${p.nombre}${p.id===personaId?' (vos)':''}</span><button class="btn small ${inTeam?'':'ghost'}" onclick="toggleMiembroInstalacion('${ult.id}','${p.id}','${inTeam?'salida':'incorporacion'}')">${inTeam?'− Retirar':'+ Agregar'}</button></div>`;
+    }).join('');
+    return `<div class="section-title">Registro de instalación · ${todayStr()}</div>
+    <div class="card">${track(2)}
+      <div class="step-done"><span>Salida hacia obra</span><span>${ult.salida}</span></div>
+      <div class="step-done"><span>Llegada a obra / inicio de trabajo</span><span>${ult.llegada}</span></div>
+      <div class="step-pending">Trabajo en curso · equipo actual: ${currentSet.size} persona(s)</div>
+      ${chipsCambios(ult)?`<div>${chipsCambios(ult)}</div>`:''}
+      <label style="margin-top:14px;">¿Cambió la gente en obra? Tocá un nombre para agregarlo o retirarlo (opcional)</label>
+      ${filas}
+      <button class="btn" onclick="registrarSalidaObra('${personaId}','${obraId}')">⏹ Registrar salida de obra (hacia el taller)</button>
+    </div>`;
+  }
+  if(ult.salidaObra&&!ult.llegadaTaller){
+    return `<div class="section-title">Registro de instalación · ${todayStr()}</div>
+    <div class="card">${track(3)}
+      <div class="step-done"><span>Salida hacia obra</span><span>${ult.salida}</span></div>
+      <div class="step-done"><span>Llegada a obra</span><span>${ult.llegada}</span></div>
+      <div class="step-done"><span>Salida de obra hacia taller</span><span>${ult.salidaObra}</span></div>
+      <div class="step-pending">Esperando llegada al taller…</div>
+      <button class="btn" onclick="registrarLlegadaTaller('${personaId}','${obraId}')">🏠 Registrar llegada al taller</button>
+    </div>`;
+  }
+}
+async function registrarSalidaTaller(personaId,obraId){
+  const ayudantesIds=Array.from(document.querySelectorAll('.ayu-check-ins:checked')).map(el=>el.value);
+  const incluyeJefe=document.getElementById('ins-incluye-jefe').checked;
+  if((ayudantesIds.length+(incluyeJefe?1:0))===0){ toast('Seleccioná al menos una persona para el viaje'); return; }
+  DB.instalaciones.push({id:uid(),personaId,obraId,fecha:todayStr(),ayudantesIds,incluyeJefe,salida:nowTime(),llegada:'',salidaObra:'',llegadaTaller:'',cambios:[]});
+  await saveKey('instalaciones',DB.instalaciones);
+  toast('Salida hacia obra registrada ✓ '+nowTime()); render();
+}
+async function registrarLlegadaObra(personaId,obraId){
+  const ult=ultimoRegistroHoy(personaId,obraId);
+  if(!ult||ult.llegada){ toast('No hay una salida pendiente'); return; }
+  ult.llegada=nowTime();
+  await saveKey('instalaciones',DB.instalaciones);
+  toast('Llegada a obra registrada ✓ '+ult.llegada+' — trabajo iniciado'); render();
+}
+async function toggleMiembroInstalacion(regId,personaId,tipo){
+  const r=DB.instalaciones.find(x=>x.id===regId);
+  if(!r||!r.llegada||r.salidaObra){ toast('No hay trabajo en curso'); return; }
+  r.cambios=r.cambios||[]; r.cambios.push({id:uid(),hora:nowTime(),tipo,personaId});
+  await saveKey('instalaciones',DB.instalaciones);
+  toast((tipo==='incorporacion'?'Se incorporó: ':'Se retiró: ')+personaNombre(personaId)+' · '+nowTime()); render();
+}
+async function registrarSalidaObra(personaId,obraId){
+  const ult=ultimoRegistroHoy(personaId,obraId);
+  if(!ult||!ult.llegada||ult.salidaObra){ toast('No hay trabajo en curso'); return; }
+  ult.salidaObra=nowTime();
+  await saveKey('instalaciones',DB.instalaciones);
+  toast('Salida de obra registrada ✓ '+ult.salidaObra); render();
+}
+async function registrarLlegadaTaller(personaId,obraId){
+  const ult=ultimoRegistroHoy(personaId,obraId);
+  if(!ult||!ult.salidaObra||ult.llegadaTaller){ toast('No hay un regreso pendiente'); return; }
+  ult.llegadaTaller=nowTime();
+  await saveKey('instalaciones',DB.instalaciones);
+  toast('Llegada al taller registrada ✓ '+ult.llegadaTaller+' — viaje completo'); render();
+}
+
+// ---------- PANEL ----------
+function renderPanel(){
+  if(DB.obras.length===0) return `<div class="empty"><strong>No hay obras cargadas</strong>Andá a "Config" para crear la primera obra.</div>`;
+  if(!panelObraId) panelObraId=DB.obras[0].id;
+  const costoHoyVal=costoHoy(), pres=presupuestoTotales(panelObraId), horasReales=horasHombreTotalesObra(panelObraId), costoReal=costoTotalObra(panelObraId), rate=Number(DB.ajustes.costoHora||0);
+  let alerts=[];
+  if(pres.horas>0){ const pct=(horasReales/pres.horas)*100; if(pct>=80) alerts.push({label:'Horas-hombre',pct,tipo:pct>=100?'crit':'warn'}); }
+  if(pres.monto>0){ const pct=(costoReal/pres.monto)*100; if(pct>=80) alerts.push({label:'Costo presupuestado',pct,tipo:pct>=100?'crit':'warn'}); }
+  let html=`<div class="obra-select"><label style="color:var(--glass);">Obra</label><select id="panel-obra-select" onchange="panelObraId=this.value; render();">${DB.obras.map(o=>`<option value="${o.id}" ${o.id===panelObraId?'selected':''}>${o.nombre}</option>`).join('')}</select></div>
+  <div class="kpi-grid"><div class="kpi"><div class="val">$${costoReal.toFixed(0)}</div><div class="lbl">Costo real obra</div></div><div class="kpi"><div class="val">$${costoHoyVal.toFixed(0)}</div><div class="lbl">Costo hoy (todas)</div></div></div>`;
+  if(rate===0) html+=`<div class="alert-banner alert-warn"><span class="tag">● Atención</span><span>No hay costo por hora configurado. Definilo en Config → Ajustes.</span></div>`;
+  if(alerts.length){
+    html+=`<div class="section-title">Alertas</div>`;
+    alerts.forEach(a=>{ html+=`<div class="alert-banner alert-${a.tipo}"><span class="tag">${a.tipo==='crit'?'⚠ Superado':'● Atención'}</span><span>${a.label}: ${a.pct.toFixed(0)}% del presupuesto consumido.</span></div>`; });
+  }
+  html+=`<div class="section-title">Presupuesto vs. real (obra completa)</div><div class="card">`;
+  if(pres.horas===0&&pres.monto===0){
+    html+=`<div class="empty" style="padding:10px 0;">Todavía no cargaste presupuesto para esta obra. Andá a Config → Presupuesto.</div>`;
+  } else {
+    if(pres.horas>0){ const pct=Math.min(horasReales/pres.horas*100,150),status=statusFor(pct);
+      html+=`<div class="gauge-wrap"><div class="gauge-head"><span>${horasReales.toFixed(1)}h-hombre de ${pres.horas}h presupuestadas</span><span class="pct">${(horasReales/pres.horas*100).toFixed(0)}%</span></div><div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div><div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div></div>`; }
+    if(pres.monto>0){ const pct=Math.min(costoReal/pres.monto*100,150),status=statusFor(pct);
+      html+=`<div class="gauge-wrap" style="margin-top:16px;"><div class="gauge-head"><span>$${costoReal.toFixed(0)} de $${pres.monto.toFixed(0)} presupuestados</span><span class="pct">${(costoReal/pres.monto*100).toFixed(0)}%</span></div><div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div><div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div></div>`; }
+  }
+  html+=`</div><div class="section-title">Detalle por área</div><div class="card">`;
+  ['vidrio','carpinteria'].forEach(areaId=>{ html+=`<div class="area-mini"><span><span class="badge ${areaInfo(areaId).badge}">${areaInfo(areaId).nombre}</span></span><span>${horasArea(panelObraId,areaId).toFixed(1)}h-hombre · ${piezasArea(panelObraId,areaId)} piezas</span></div>`; });
+  const ins=horasInstalacionDetalle(panelObraId);
+  html+=`<div class="area-mini"><span><span class="badge b-instalacion">Instalación · Transporte ida</span></span><span>${ins.ida.toFixed(1)}h-hombre</span></div>
+  <div class="area-mini"><span><span class="badge b-instalacion">Instalación · Trabajo neto</span></span><span>${ins.trabajo.toFixed(1)}h-hombre</span></div>
+  <div class="area-mini"><span><span class="badge b-instalacion">Instalación · Transporte vuelta</span></span><span>${ins.vuelta.toFixed(1)}h-hombre</span></div></div>`;
+  return html;
+}
+
+// ---------- REPORTES ----------
+function renderReportes(){
+  if(!reportesFecha) reportesFecha=yesterdayStr();
+  const fecha=reportesFecha, jornada=Number(DB.ajustes.jornadaEstandar||9.5);
+  const personaIds=new Set();
+  DB.registros.filter(r=>r.fecha===fecha).forEach(r=>{ if(r.incluyeJefe) personaIds.add(r.personaId); (r.ayudantesIds||[]).forEach(id=>personaIds.add(id)); });
+  DB.instalaciones.filter(r=>r.fecha===fecha).forEach(r=>{ if(r.incluyeJefe) personaIds.add(r.personaId); (r.ayudantesIds||[]).forEach(id=>personaIds.add(id)); (r.cambios||[]).forEach(c=>personaIds.add(c.personaId)); });
+
+  let html=`<div class="card"><label>Fecha a revisar</label><input type="date" id="rep-fecha" value="${fecha}" onchange="reportesFecha=this.value; reportEditKey=null; render();"></div>`;
+  if(personaIds.size===0){
+    html+=`<div class="empty"><strong>Sin registros ese día</strong>Nadie cargó datos para la fecha seleccionada.</div>`;
+    return html;
+  }
+
+  Array.from(personaIds).forEach(personaId=>{
+    const persona=DB.personas.find(p=>p.id===personaId);
+    const desglose=desglosePersonaFecha(personaId,fecha);
+    const horasPersonales=Object.values(desglose).reduce((a,b)=>a+b,0);
+    const regs=DB.registros.filter(r=>r.fecha===fecha && r.personaId===personaId);
+    const insts=DB.instalaciones.filter(r=>r.fecha===fecha && r.personaId===personaId);
+
+    let redFlags=[],warnFlags=[];
+    insts.forEach(r=>{
+      if(r.salida&&!r.llegada) redFlags.push(`Falta registrar llegada a obra (${obraNombre(r.obraId)}, salió ${r.salida})`);
+      else if(r.llegada&&!r.salidaObra) redFlags.push(`Falta registrar salida de obra hacia el taller (${obraNombre(r.obraId)}, llegó ${r.llegada})`);
+      else if(r.salidaObra&&!r.llegadaTaller) redFlags.push(`Falta registrar llegada al taller (${obraNombre(r.obraId)}, salió de obra ${r.salidaObra})`);
+    });
+    const diff=horasPersonales-jornada;
+    if(redFlags.length===0 && Math.abs(diff)>0.25) warnFlags.push(`Las horas no cuadran con la jornada de ${jornada}h: ${diff>0?'sobran':'faltan'} ${Math.abs(diff).toFixed(1)}h`);
+    const status=redFlags.length?'crit':(warnFlags.length?'warn':'ok');
+
+    html+=`<div class="report-card rc-${status}">
+      <div class="report-head"><span class="name">${persona?persona.nombre:'—'} <span class="badge ${persona?areaInfo(persona.areaId).badge:''}">${persona?(esJefeRol(persona.rol)?persona.rol:'Ayudante · '+areaInfo(persona.areaId).nombre):''}</span></span><span class="horas">${horasPersonales.toFixed(1)}h / ${jornada}h</span></div>`;
+    if(Object.keys(desglose).length){
+      let left=0, segs='';
+      Object.keys(desglose).forEach(obraId=>{
+        const w=Math.min(desglose[obraId]/jornada*100,100-left);
+        segs+=`<div class="stack-seg" style="left:${left}%;width:${w}%;background:${colorForObra(obraId)};" title="${obraNombre(obraId)}: ${desglose[obraId].toFixed(1)}h"></div>`;
+        left+=w;
+      });
+      html+=`<div class="stackbar-wrap"><div class="stackbar">${segs}<div class="stack-tick" style="left:${Math.min(100/(horasPersonales/jornada||1),100)}%;"></div></div>
+        <div class="stackbar-legend">${Object.keys(desglose).map(o=>`<span class="chip" style="background:${colorForObra(o)}22;border:1px solid ${colorForObra(o)};color:${colorForObra(o)};">${obraNombre(o)}: ${desglose[o].toFixed(1)}h</span>`).join('')}</div></div>`;
+    }
+    redFlags.forEach(f=> html+=`<div class="flag-line f-crit">⚠ ${f}</div>`);
+    warnFlags.forEach(f=> html+=`<div class="flag-line f-warn">● ${f}</div>`);
+    if(status==='ok') html+=`<div class="flag-line" style="color:var(--green);">✓ Datos completos y horas conformes</div>`;
+
+    if(esJefeRol(persona ? persona.rol : '')){
+      regs.forEach(r=>{
+        const key='reg-'+r.id;
+        const areaAyudantes=DB.personas.filter(p=>p.areaId===r.areaId && !esJefeRol(p.rol));
+        if(reportEditKey===key){
+          html+=`<div class="detail-item">
+            <label>Personas en este registro</label>
+            ${areaAyudantes.map(a=>`<label class="check-row"><input type="checkbox" class="edit-ayu-${r.id}" value="${a.id}" ${ (r.ayudantesIds||[]).includes(a.id)?'checked':''}> ${a.nombre}</label>`).join('')}
+            <label class="check-row"><input type="checkbox" id="edit-incluye-jefe-${r.id}" ${r.incluyeJefe?'checked':''}> Incluye al jefe</label>
+            <div class="row2" style="margin-top:8px;"><div><label>Horas</label><input type="number" step="0.5" id="edit-reg-horas-${r.id}" value="${r.horas}"></div><div><label>Piezas</label><input type="number" id="edit-reg-piezas-${r.id}" value="${r.piezas}"></div></div>
+            <div class="actions"><button class="btn small" onclick="saveRegistroEdit('${r.id}')">Guardar</button><button class="btn small ghost" onclick="reportEditKey=null; render();">Cancelar</button></div>
+          </div>`;
+        } else {
+          html+=`<div class="detail-item">
+            <div class="drow"><span>${areaInfo(r.areaId).nombre} · ${obraNombre(r.obraId)}</span><span>${r.horas}h × ${contarPersonas(r)} pers. · ${r.piezas} pzs</span></div>
+            <div class="actions"><button class="btn small ghost" onclick="reportEditKey='${key}'; render();">Editar</button><button class="del" onclick="delRegistroFromReport('${r.id}')">Eliminar</button></div>
+          </div>`;
+        }
+      });
+      insts.forEach(r=>{
+        const key='ins-'+r.id;
+        if(reportEditKey===key){
+          html+=`<div class="detail-item">
+            <div class="row2"><div><label>Salida hacia obra</label><input type="time" id="edit-ins-salida-${r.id}" value="${r.salida||''}"></div><div><label>Llegada a obra</label><input type="time" id="edit-ins-llegada-${r.id}" value="${r.llegada||''}"></div></div>
+            <div class="row2"><div><label>Salida de obra</label><input type="time" id="edit-ins-salidaobra-${r.id}" value="${r.salidaObra||''}"></div><div><label>Llegada al taller</label><input type="time" id="edit-ins-llegadataller-${r.id}" value="${r.llegadaTaller||''}"></div></div>
+            <label>Movimientos de personal</label>
+            ${(r.cambios&&r.cambios.length)? r.cambios.map(c=>`<div class="drow">${c.hora} · ${c.tipo==='incorporacion'?'+':'-'} ${personaNombre(c.personaId)}<button class="del" onclick="delCambio('${r.id}','${c.id}')">Quitar</button></div>`).join('') : '<div class="meta">Sin movimientos</div>'}
+            <div class="actions"><button class="btn small" onclick="editInsUpdate('${r.id}')">Guardar</button><button class="btn small ghost" onclick="reportEditKey=null; render();">Cancelar</button></div>
+          </div>`;
+        } else {
+          html+=`<div class="detail-item">
+            <div class="drow"><span>Instalación · ${obraNombre(r.obraId)}</span><span>${contarPersonas(r)} pers. iniciales</span></div>
+            <div class="drow"><span>Taller → Obra</span><span>${r.salida||'—'} → ${r.llegada||'<span style="color:#B4585A;">falta</span>'}</span></div>
+            <div class="drow"><span>Obra → Taller</span><span>${r.salidaObra||'—'} → ${r.llegadaTaller||'<span style="color:#B4585A;">falta</span>'}</span></div>
+            ${chipsCambios(r)?`<div style="margin-top:6px;">${chipsCambios(r)}</div>`:''}
+            <div class="actions"><button class="btn small ghost" onclick="reportEditKey='${key}'; render();">Editar</button><button class="del" onclick="delInstalacionFromReport('${r.id}')">Eliminar</button></div>
+          </div>`;
+        }
+      });
+    }
+    html+=`</div>`;
+  });
+  return html;
+}
+async function saveRegistroEdit(id){
+  const r=DB.registros.find(x=>x.id===id);
+  r.ayudantesIds=Array.from(document.querySelectorAll('.edit-ayu-'+id+':checked')).map(el=>el.value);
+  r.incluyeJefe=document.getElementById('edit-incluye-jefe-'+id).checked;
+  r.horas=Number(document.getElementById('edit-reg-horas-'+id).value||r.horas);
+  r.piezas=Number(document.getElementById('edit-reg-piezas-'+id).value||r.piezas);
+  await saveKey('registros',DB.registros);
+  toast('Registro actualizado ✓'); reportEditKey=null; render();
+}
+async function delRegistroFromReport(id){ DB.registros=DB.registros.filter(r=>r.id!==id); await saveKey('registros',DB.registros); toast('Registro eliminado'); render(); }
+async function delInstalacionFromReport(id){ DB.instalaciones=DB.instalaciones.filter(r=>r.id!==id); await saveKey('instalaciones',DB.instalaciones); toast('Registro eliminado'); render(); }
+async function editInsUpdate(id){
+  const r=DB.instalaciones.find(x=>x.id===id);
+  r.salida=document.getElementById('edit-ins-salida-'+id).value;
+  r.llegada=document.getElementById('edit-ins-llegada-'+id).value;
+  r.salidaObra=document.getElementById('edit-ins-salidaobra-'+id).value;
+  r.llegadaTaller=document.getElementById('edit-ins-llegadataller-'+id).value;
+  await saveKey('instalaciones',DB.instalaciones);
+  toast('Registro actualizado ✓'); reportEditKey=null; render();
+}
+async function delCambio(regId,cambioId){
+  const r=DB.instalaciones.find(x=>x.id===regId);
+  r.cambios=(r.cambios||[]).filter(c=>c.id!==cambioId);
+  await saveKey('instalaciones',DB.instalaciones); render();
+}
+
+// ---------- CONFIG ----------
+function renderConfig(){
+  return `<div class="subtabs">
+    <button class="${configSub==='obras'?'active':''}" onclick="configSub='obras';render();">Obras</button>
+    <button class="${configSub==='equipos'?'active':''}" onclick="configSub='equipos';render();">Equipos</button>
+    <button class="${configSub==='presupuesto'?'active':''}" onclick="configSub='presupuesto';render();">Presupuesto</button>
+    <button class="${configSub==='ajustes'?'active':''}" onclick="configSub='ajustes';render();">Ajustes</button>
+  </div>
+  ${configSub==='obras'?renderObrasConfig():configSub==='equipos'?renderEquiposConfig():configSub==='presupuesto'?renderPresupuestoConfig():renderAjustesConfig()}`;
+}
+function renderObrasConfig(){
+  return `<div class="card"><label>Nombre de la obra</label><input type="text" id="new-obra-nombre" placeholder="Ej: Torre Aurora — Piso 8"><label>Cliente</label><input type="text" id="new-obra-cliente" placeholder="Ej: Constructora Andina"><button class="btn" onclick="crearObra()">Agregar obra</button></div>
+  <div class="section-title">Obras cargadas</div><div class="card">${DB.obras.length===0?'<div class="empty">Ninguna obra todavía</div>':DB.obras.map(o=>`<div class="list-item"><span>${o.nombre}<br><span class="meta">${o.cliente||'sin cliente'}</span></span><button class="del" onclick="borrarObra('${o.id}')">Eliminar</button></div>`).join('')}</div>`;
+}
+async function crearObra(){
+  const nombre=document.getElementById('new-obra-nombre').value.trim(), cliente=document.getElementById('new-obra-cliente').value.trim();
+  if(!nombre){ toast('Ingresá un nombre de obra'); return; }
+  DB.obras.push({id:uid(),nombre,cliente,fechaInicio:todayStr()});
+  await saveKey('obras',DB.obras); toast('Obra creada ✓'); render();
+}
+async function borrarObra(id){ DB.obras=DB.obras.filter(o=>o.id!==id); await saveKey('obras',DB.obras); render(); }
+
+function renderEquiposConfig(){
+  return `<div class="card"><label>Nombre</label><input type="text" id="new-persona-nombre" placeholder="Ej: Marco Suárez">
+  <label>Área</label><select id="new-persona-area" onchange="updateRolOptions()">${AREAS.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('')}</select>
+  <label>Rol</label><select id="new-persona-rol">${ROLES['vidrio'].map(r=>`<option>${r}</option>`).join('')}</select>
+  <button class="btn" onclick="crearPersona()">Agregar al equipo</button></div>
+  ${AREAS.map(area=>{
+    const gente=DB.personas.filter(p=>p.areaId===area.id);
+    return `<div class="section-title">${area.nombre}</div><div class="card">${gente.length===0?'<div class="empty">Nadie cargado todavía</div>':gente.map(p=>`<div class="list-item"><span><span class="badge ${area.badge}">${esJefeRol(p.rol)?'JEFE':'AYUDANTE'}</span><br>${p.nombre}</span><button class="del" onclick="borrarPersona('${p.id}')">Eliminar</button></div>`).join('')}</div>`;
+  }).join('')}`;
+}
+function updateRolOptions(){ const area=document.getElementById('new-persona-area').value; document.getElementById('new-persona-rol').innerHTML=ROLES[area].map(r=>`<option>${r}</option>`).join(''); }
+async function crearPersona(){
+  const nombre=document.getElementById('new-persona-nombre').value.trim(), areaId=document.getElementById('new-persona-area').value, rol=document.getElementById('new-persona-rol').value;
+  if(!nombre){ toast('Ingresá el nombre'); return; }
+  DB.personas.push({id:uid(),nombre,areaId,rol});
+  await saveKey('personas',DB.personas); toast('Agregado al equipo ✓'); render();
+}
+async function borrarPersona(id){ DB.personas=DB.personas.filter(p=>p.id!==id); await saveKey('personas',DB.personas); render(); }
+
+function renderPresupuestoConfig(){
+  if(DB.obras.length===0) return `<div class="empty"><strong>Cargá una obra primero</strong>Necesitás al menos una obra para asignar presupuesto.</div>`;
+  if(!presupuestoObraId) presupuestoObraId=DB.obras[0].id;
+  const items=DB.presupuestos.filter(p=>p.obraId===presupuestoObraId), totales=presupuestoTotales(presupuestoObraId);
+  return `<div class="card"><label>Obra</label><select id="pres-obra-select" onchange="presupuestoObraId=this.value; render();">${DB.obras.map(o=>`<option value="${o.id}" ${o.id===presupuestoObraId?'selected':''}>${o.nombre}</option>`).join('')}</select></div>
+  <div class="card"><label>Concepto</label><input type="text" id="new-pres-concepto" placeholder="Ej: Presupuesto inicial, Adicional carpinterías cocina…">
+  <div class="row2"><div><label>Horas presupuestadas</label><input type="number" step="1" min="0" id="new-pres-horas" placeholder="Ej: 300"></div><div><label>Monto presupuestado ($)</label><input type="number" step="1" min="0" id="new-pres-monto" placeholder="Ej: 8500"></div></div>
+  <button class="btn" onclick="crearPresupuesto()">Agregar ítem de presupuesto</button></div>
+  <div class="totales-box"><span>Total presupuestado — ${obraNombre(presupuestoObraId)}</span><span>${totales.horas}h · $${totales.monto}</span></div>
+  <div class="section-title">Ítems cargados</div><div class="card">${items.length===0?'<div class="empty">Sin ítems de presupuesto todavía</div>':items.map(p=>`<div class="list-item"><span>${p.concepto}<br><span class="meta">${p.horas}h · $${p.monto}</span></span><button class="del" onclick="borrarPresupuesto('${p.id}')">Eliminar</button></div>`).join('')}</div>`;
+}
+async function crearPresupuesto(){
+  const concepto=document.getElementById('new-pres-concepto').value.trim(), horas=document.getElementById('new-pres-horas').value, monto=document.getElementById('new-pres-monto').value;
+  if(!concepto||(!horas&&!monto)){ toast('Completá el concepto y al menos horas o monto'); return; }
+  DB.presupuestos.push({id:uid(),obraId:presupuestoObraId,concepto,horas:Number(horas||0),monto:Number(monto||0),fecha:todayStr()});
+  await saveKey('presupuestos',DB.presupuestos); toast('Ítem de presupuesto agregado ✓'); render();
+}
+async function borrarPresupuesto(id){ DB.presupuestos=DB.presupuestos.filter(p=>p.id!==id); await saveKey('presupuestos',DB.presupuestos); render(); }
+
+function renderAjustesConfig(){
+  return `<div class="card">
+    <label>Costo por hora, por persona (aplica a todas las áreas)</label>
+    <input type="number" step="0.5" min="0" id="ajuste-costo-hora" value="${DB.ajustes.costoHora||''}" placeholder="Ej: 12.50">
+    <label>Jornada laboral estándar (horas por día)</label>
+    <input type="number" step="0.5" min="0" id="ajuste-jornada" value="${DB.ajustes.jornadaEstandar||9.5}" placeholder="Ej: 9.5">
+    <button class="btn" onclick="guardarAjustes()">Guardar</button>
+  </div>
+  <div class="empty" style="padding:8px 0;">En instalación se descuentan 0.5h de almuerzo del tiempo de trabajo en obra (no del transporte). La jornada estándar se usa en Reportes.</div>
+  <div class="section-title">Respaldo de datos</div>
+  <div class="card">
+    <div class="empty" style="padding:0 0 10px;">Los datos se guardan automáticamente en la nube de este panel, compartidos entre todos los que lo usan. Para tener también una copia local, descargá el respaldo.</div>
+    <button class="btn ghost" onclick="exportarRespaldo()">⬇ Descargar respaldo completo (JSON)</button>
+  </div>`;
+}
+async function guardarAjustes(){
+  const costoHora=document.getElementById('ajuste-costo-hora').value, jornada=document.getElementById('ajuste-jornada').value;
+  DB.ajustes={costoHora:Number(costoHora||0), jornadaEstandar:Number(jornada||9.5)};
+  await saveKey('ajustes',DB.ajustes); toast('Ajustes guardados ✓'); render();
+}
+function exportarRespaldo(){
+  const data=JSON.stringify(DB,null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`tecnosuisse-respaldo-${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('Respaldo descargado ✓');
+}
+
+// ---------- MAIN RENDER ----------
+function render(){
+  const main=document.getElementById('main');
+  if(currentTab!=='captura' && !authenticated){ main.innerHTML=renderPasswordGate(); return; }
+  if(currentTab==='captura') main.innerHTML=renderCaptura();
+  else if(currentTab==='panel') main.innerHTML=renderPanel();
+  else if(currentTab==='reportes') main.innerHTML=renderReportes();
+  else main.innerHTML=renderConfig();
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v6</div>`;
+  if(currentTab==='captura'){
+    const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra');
+    const updateDynamic=()=>{ const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
+    if(selP) selP.addEventListener('change',updateDynamic);
+    if(selO) selO.addEventListener('change',updateDynamic);
+  }
+}
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); currentTab=btn.dataset.tab; reportEditKey=null; render();
+  });
+});
+(async function init(){ await loadAll(); render(); })();
+</script>
+</body>
+</html>
