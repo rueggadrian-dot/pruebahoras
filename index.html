@@ -131,7 +131,6 @@
     <h1>Control de Producción</h1>
     <nav class="tabs">
       <button data-tab="captura" class="active">Captura</button>
-      <button data-tab="panel">Panel</button>
       <button data-tab="reportes">Reportes</button>
       <button data-tab="cierre">Cierre</button>
       <button data-tab="config">Config</button>
@@ -154,7 +153,7 @@ const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let DB={obras:[],personas:[],presupuestos:[],registros:[],instalaciones:[],ajustes:{costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00'}};
 let currentTab='captura';
-let panelObraId=null;
+let capPersonaId='', capObraId='', capFecha='';
 let configSub='obras';
 let presupuestoObraId=null;
 let reportesFecha=null;
@@ -207,6 +206,7 @@ async function loadAll(){
     salida:t5(r.salida),llegada:t5(r.llegada),salidaObra:t5(r.salida_obra),llegadaTaller:t5(r.llegada_taller),
     carpinteriasInstaladas:Number(r.carpinterias_instaladas||0),carpinteriasMosquitero:Number(r.carpinterias_mosquitero||0),
     detalle:r.detalle||'',
+    vaAOtraObra:!!r.va_a_otra_obra, vieneDe:r.viene_de_instalacion||null,
     ayudantesIds:ayudPorInstalacion[r.id]||[],
     cambios:(cambiosPorInstalacion[r.id]||[]).sort((a,b)=>a.hora.localeCompare(b.hora))
   }));
@@ -234,6 +234,9 @@ function personaTieneHistorial(id){
 }
 function obraNombre(id){ const o=DB.obras.find(x=>x.id===id); return o?o.nombre:'—'; }
 function obrasActivas(){ return DB.obras.filter(o=>!o.terminada); }
+function selectObrasOpts(actualId){
+  return DB.obras.filter(o=>!o.terminada||o.id===actualId).map(o=>`<option value="${o.id}" ${o.id===actualId?'selected':''}>${o.nombre}${o.terminada?' (terminada)':''}</option>`).join('');
+}
 function obraTieneHistorial(id){
   return DB.registros.some(r=>r.obraId===id) || DB.instalaciones.some(r=>r.obraId===id) || DB.presupuestos.some(p=>p.obraId===id);
 }
@@ -463,11 +466,11 @@ function renderCaptura(){
   <div class="section-title">Quién registra</div>
   <div class="card">
     <label>Jefe de área</label>
-    <select id="cap-persona"><option value="">Seleccioná tu nombre…</option>${jefes.map(p=>`<option value="${p.id}">${p.nombre} — ${p.rol}</option>`).join('')}</select>
+    <select id="cap-persona"><option value="">Seleccioná tu nombre…</option>${jefes.map(p=>`<option value="${p.id}" ${p.id===capPersonaId?'selected':''}>${p.nombre} — ${p.rol}</option>`).join('')}</select>
     <label>Obra</label>
-    <select id="cap-obra"><option value="">Seleccioná la obra…</option>${obrasActivas().map(o=>`<option value="${o.id}">${o.nombre}</option>`).join('')}</select>
+    <select id="cap-obra"><option value="">Seleccioná la obra…</option>${obrasActivas().map(o=>`<option value="${o.id}" ${o.id===capObraId?'selected':''}>${o.nombre}</option>`).join('')}</select>
     <label>Fecha (por si te olvidaste de cargar un día anterior)</label>
-    <input type="date" id="cap-fecha" value="${todayStr()}" max="${todayStr()}">
+    <input type="date" id="cap-fecha" value="${capFecha||todayStr()}" max="${todayStr()}">
   </div>
   <div id="cap-form-dynamic"></div>`;
 }
@@ -528,7 +531,9 @@ function chipsCambios(r){
   if(!r.cambios||r.cambios.length===0) return '';
   return r.cambios.map(c=>`<span class="chip ${c.tipo==='salida'?'out':''}">${c.hora} · ${c.tipo==='incorporacion'?'+':'-'} ${personaNombre(c.personaId)}</span>`).join('');
 }
-function tripCompleto(r){ return r&&r.salida&&r.llegada&&r.salidaObra&&r.llegadaTaller; }
+function tripCompleto(r){ return r&&r.salida&&r.llegada&&r.salidaObra&&(r.llegadaTaller||r.vaAOtraObra); }
+function origenViaje(r){ if(!r.vieneDe) return 'Taller'; const o=DB.instalaciones.find(x=>x.id===r.vieneDe); return o?obraNombre(o.obraId):'Otra obra'; }
+function destinoViaje(r){ if(!r.vaAOtraObra) return 'Taller'; const d=DB.instalaciones.find(x=>x.vieneDe===r.id); return d?obraNombre(d.obraId):'Otra obra'; }
 function renderInstalacionFlow(personaId,obraId){
   if(!obraId){ return `<div class="section-title">Registro de instalación</div><div class="empty" style="padding:20px 0;">Seleccioná la obra para empezar a registrar horarios.</div>`; }
   const ult=ultimoRegistroHoy(personaId,obraId);
@@ -545,9 +550,9 @@ function renderInstalacionFlow(personaId,obraId){
       return `<div class="trip-summary">
       <div class="t-row"><span>Equipo inicial</span><span>${contarPersonas(r)} persona(s)</span></div>
       ${prep>0?`<div class="t-row"><span>Preparación en taller (${DB.ajustes.horaEntradaTaller} → ${r.salida})</span><span>${prep.toFixed(1)}h</span></div>`:''}
-      <div class="t-row"><span>Salida taller → Llegada obra</span><span>${r.salida} → ${r.llegada} (${ida.toFixed(1)}h)</span></div>
+      <div class="t-row"><span>${r.vieneDe?'Traslado desde '+origenViaje(r):'Salida taller'} → Llegada obra</span><span>${r.salida} → ${r.llegada} (${ida.toFixed(1)}h)</span></div>
       <div class="t-row"><span>Trabajo en obra (h-hombre, sin descontar almuerzo)</span><span>${trabajo.toFixed(1)}h</span></div>
-      <div class="t-row"><span>Salida obra → Llegada taller</span><span>${r.salidaObra} → ${r.llegadaTaller} (${vuelta.toFixed(1)}h)</span></div>
+      ${r.vaAOtraObra?`<div class="t-row"><span>Salida obra → siguió a ${destinoViaje(r)}</span><span>${r.salidaObra}</span></div>`:`<div class="t-row"><span>Salida obra → Llegada taller</span><span>${r.salidaObra} → ${r.llegadaTaller} (${vuelta.toFixed(1)}h)</span></div>`}
       ${r.detalle?`<div style="margin-top:6px;font-size:12px;color:var(--steel);">📝 ${r.detalle}</div>`:''}
       ${chipsCambios(r)?`<div style="margin-top:6px;">${chipsCambios(r)}</div>`:''}
     </div>`;}).join('');
@@ -568,7 +573,7 @@ function renderInstalacionFlow(personaId,obraId){
   if(ult.salida&&!ult.llegada){
     return `<div class="section-title">Registro de instalación · ${todayStr()}</div>
     <div class="card">${track(1)}
-      <div class="step-done"><span>Salida hacia obra</span><span>${ult.salida}</span></div>
+      <div class="step-done"><span>${ult.vieneDe?'Salida desde '+origenViaje(ult)+' (traslado entre obras)':'Salida hacia obra'}</span><span>${ult.salida}</span></div>
       <div class="step-pending">Esperando llegada a obra… (equipo: ${contarPersonas(ult)} personas)</div>
       <button class="btn" onclick="registrarLlegadaObra('${personaId}','${obraId}')">📍 Registrar llegada a obra</button>
     </div>`;
@@ -598,7 +603,13 @@ function renderInstalacionFlow(personaId,obraId){
       </div>
       <label style="margin-top:14px;">Detalle de lo trabajado (opcional)</label>
       <textarea id="ins-detalle" placeholder="Ej: Se instalaron las ventanas del piso 3, quedó pendiente el sellado del baño…"></textarea>
-      <button class="btn" onclick="registrarSalidaObra('${personaId}','${obraId}')">⏹ Registrar salida de obra (hacia el taller)</button>
+      <label class="check-row" style="margin-top:14px;"><input type="checkbox" id="ins-otra-obra" onchange="document.getElementById('ins-otra-obra-box').style.display=this.checked?'block':'none'; document.getElementById('ins-btn-salida').textContent=this.checked?'⏩ Registrar salida hacia la otra obra':'⏹ Registrar salida de obra (hacia el taller)';"> Nos vamos directo a otra obra (sin pasar por el taller)</label>
+      <div id="ins-otra-obra-box" style="display:none;">
+        <label>¿A qué obra van?</label>
+        <select id="ins-obra-destino"><option value="">Seleccioná la obra destino…</option>${obrasActivas().filter(o=>o.id!==obraId).map(o=>`<option value="${o.id}">${o.nombre}</option>`).join('')}</select>
+        <div class="empty" style="padding:6px 0;text-align:left;">Va el equipo que está en obra ahora (${currentSet.size} persona(s)). El tiempo de traslado se carga a la obra destino.</div>
+      </div>
+      <button class="btn" id="ins-btn-salida" onclick="registrarSalidaObra('${personaId}','${obraId}')">⏹ Registrar salida de obra (hacia el taller)</button>
     </div>`;
   }
   if(ult.salidaObra&&!ult.llegadaTaller){
@@ -657,11 +668,30 @@ async function registrarSalidaObra(personaId,obraId){
   const mosquitero=Number(document.getElementById('ins-carp-mosquitero').value||0);
   const detalle=document.getElementById('ins-detalle').value.trim();
   if(mosquitero>instaladas){ toast('Las carpinterías con mosquitero no pueden ser más que las instaladas'); return; }
+  const otraObra=document.getElementById('ins-otra-obra') && document.getElementById('ins-otra-obra').checked;
+  const destino=otraObra? document.getElementById('ins-obra-destino').value : '';
+  if(otraObra && !destino){ toast('Elegí a qué obra van'); return; }
+  const equipo=miembrosActuales(ult);
+  if(otraObra && equipo.size===0){ toast('No hay nadie en obra para trasladar'); return; }
   const hora=nowTime();
-  const {error}=await sb.from('instalaciones').update({salida_obra:hora,carpinterias_instaladas:instaladas,carpinterias_mosquitero:mosquitero,detalle}).eq('id',ult.id);
-  if(sbErr(error)) return;
+  const upd={salida_obra:hora,carpinterias_instaladas:instaladas,carpinterias_mosquitero:mosquitero,detalle};
+  if(otraObra) upd.va_a_otra_obra=true;
+  const {error}=await sb.from('instalaciones').update(upd).eq('id',ult.id);
+  if(error){ sbErr(error); if(otraObra && /va_a_otra_obra|column/i.test(error.message)) toast('Falta correr la migración SQL de traslados en Supabase'); return; }
   ult.salidaObra=hora; ult.carpinteriasInstaladas=instaladas; ult.carpinteriasMosquitero=mosquitero; ult.detalle=detalle;
-  toast('Salida de obra registrada ✓ '+hora); render();
+  if(!otraObra){ toast('Salida de obra registrada ✓ '+hora); render(); return; }
+  ult.vaAOtraObra=true;
+  const incluyeJefe=equipo.has(personaId);
+  const ayudantesIds=[...equipo].filter(id=>id!==personaId);
+  const {data,error:e2}=await sb.from('instalaciones').insert({persona_id:personaId,obra_id:destino,fecha:ult.fecha,incluye_jefe:incluyeJefe,salida:hora,viene_de_instalacion:ult.id}).select().single();
+  if(sbErr(e2)) return;
+  if(ayudantesIds.length){
+    const {error:e3}=await sb.from('instalaciones_ayudantes').insert(ayudantesIds.map(pid=>({instalacion_id:data.id,persona_id:pid})));
+    if(sbErr(e3)) return;
+  }
+  DB.instalaciones.push({id:data.id,personaId,obraId:destino,fecha:ult.fecha,ayudantesIds,incluyeJefe,salida:hora,llegada:'',salidaObra:'',llegadaTaller:'',cambios:[],vaAOtraObra:false,vieneDe:ult.id,detalle:''});
+  capObraId=destino;
+  toast('Salida hacia '+obraNombre(destino)+' registrada ✓ '+hora); render();
 }
 async function registrarLlegadaTaller(personaId,obraId){
   const ult=ultimoRegistroHoy(personaId,obraId);
@@ -671,52 +701,6 @@ async function registrarLlegadaTaller(personaId,obraId){
   if(sbErr(error)) return;
   ult.llegadaTaller=hora;
   toast('Llegada al taller registrada ✓ '+hora+' — viaje completo'); render();
-}
-
-// ---------- PANEL ----------
-function renderPanel(){
-  if(obrasActivas().length===0) return `<div class="empty"><strong>No hay obras activas</strong>Todas las obras están terminadas, o todavía no creaste ninguna en "Config".</div>`;
-  if(!panelObraId||!obrasActivas().some(o=>o.id===panelObraId)) panelObraId=obrasActivas()[0].id;
-  const costoHoyVal=costoHoy(), pres=presupuestoTotales(panelObraId), horasReales=horasHombreTotalesObra(panelObraId), costoReal=costoTotalObra(panelObraId), rate=Number(DB.ajustes.costoHora||0);
-  let alerts=[];
-  if(pres.horas>0){ const pct=(horasReales/pres.horas)*100; if(pct>=80) alerts.push({label:'Horas-hombre',pct,tipo:pct>=100?'crit':'warn'}); }
-  if(pres.monto>0){ const pct=(costoReal/pres.monto)*100; if(pct>=80) alerts.push({label:'Costo presupuestado',pct,tipo:pct>=100?'crit':'warn'}); }
-  let html=`<div class="obra-select"><label style="color:var(--glass);">Obra</label><select id="panel-obra-select" onchange="panelObraId=this.value; render();">${obrasActivas().map(o=>`<option value="${o.id}" ${o.id===panelObraId?'selected':''}>${o.nombre}</option>`).join('')}</select></div>
-  <div class="kpi-grid"><div class="kpi"><div class="val">$${costoReal.toFixed(0)}</div><div class="lbl">Costo real obra</div></div><div class="kpi"><div class="val">$${costoHoyVal.toFixed(0)}</div><div class="lbl">Costo hoy (todas)</div></div></div>`;
-  if(rate===0) html+=`<div class="alert-banner alert-warn"><span class="tag">● Atención</span><span>No hay costo por hora configurado. Definilo en Config → Ajustes.</span></div>`;
-  if(alerts.length){
-    html+=`<div class="section-title">Alertas</div>`;
-    alerts.forEach(a=>{ html+=`<div class="alert-banner alert-${a.tipo}"><span class="tag">${a.tipo==='crit'?'⚠ Superado':'● Atención'}</span><span>${a.label}: ${a.pct.toFixed(0)}% del presupuesto consumido.</span></div>`; });
-  }
-  html+=`<div class="section-title">Presupuesto vs. real (obra completa)</div><div class="card">`;
-  if(pres.horas===0&&pres.monto===0){
-    html+=`<div class="empty" style="padding:10px 0;">Todavía no cargaste presupuesto para esta obra. Andá a Config → Presupuesto.</div>`;
-  } else {
-    if(pres.horas>0){ const pct=Math.min(horasReales/pres.horas*100,150),status=statusFor(pct);
-      html+=`<div class="gauge-wrap"><div class="gauge-head"><span>${horasReales.toFixed(1)}h-hombre de ${pres.horas}h presupuestadas</span><span class="pct">${(horasReales/pres.horas*100).toFixed(0)}%</span></div><div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div><div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div></div>`; }
-    if(pres.monto>0){ const pct=Math.min(costoReal/pres.monto*100,150),status=statusFor(pct);
-      html+=`<div class="gauge-wrap" style="margin-top:16px;"><div class="gauge-head"><span>$${costoReal.toFixed(0)} de $${pres.monto.toFixed(0)} presupuestados</span><span class="pct">${(costoReal/pres.monto*100).toFixed(0)}%</span></div><div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div><div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div></div>`; }
-  }
-  html+=`</div><div class="section-title">Detalle por área</div><div class="card">`;
-  ['vidrio','carpinteria'].forEach(areaId=>{ html+=`<div class="area-mini"><span><span class="badge ${areaInfo(areaId).badge}">${areaInfo(areaId).nombre}</span></span><span>${horasArea(panelObraId,areaId).toFixed(1)}h-hombre · ${piezasArea(panelObraId,areaId)} piezas</span></div>`; });
-  const ins=horasInstalacionDetalle(panelObraId);
-  html+=`<div class="area-mini"><span><span class="badge b-instalacion">Instalación · Preparación</span></span><span>${ins.preparacion.toFixed(1)}h-hombre</span></div>
-  <div class="area-mini"><span><span class="badge b-instalacion">Instalación · Transporte ida</span></span><span>${ins.ida.toFixed(1)}h-hombre</span></div>
-  <div class="area-mini"><span><span class="badge b-instalacion">Instalación · Trabajo neto</span></span><span>${ins.trabajo.toFixed(1)}h-hombre</span></div>
-  <div class="area-mini"><span><span class="badge b-instalacion">Instalación · Transporte vuelta</span></span><span>${ins.vuelta.toFixed(1)}h-hombre</span></div></div>`;
-
-  const carp=carpinteriasObra(panelObraId);
-  html+=`<div class="section-title">Carpinterías</div><div class="card">`;
-  if(pres.carpinterias===0){
-    html+=`<div class="empty" style="padding:8px 0;">No cargaste cantidad de carpinterías presupuestadas para esta obra (Config → Presupuesto). Instaladas hasta ahora: <strong>${carp.instaladas}</strong>, con mosquitero: <strong>${carp.mosquitero}</strong>.</div>`;
-  } else {
-    const faltan=Math.max(pres.carpinterias-carp.instaladas,0), pct=Math.min(carp.instaladas/pres.carpinterias*100,150), status=statusFor(pct);
-    html+=`<div class="gauge-wrap"><div class="gauge-head"><span>${carp.instaladas} de ${pres.carpinterias} instaladas</span><span class="pct">${(carp.instaladas/pres.carpinterias*100).toFixed(0)}%</span></div><div class="gauge status-${status}"><div class="gauge-fill" style="width:${Math.min(pct,100)}%;"></div></div><div class="gauge-ticks"><span>0%</span><span>50%</span><span>80%</span><span>100%</span></div></div>
-    <div class="calc-box"><span>Faltan instalar</span><span>${faltan}</span></div>
-    <div class="calc-box" style="margin-top:6px;"><span>Con mosquitero</span><span>${carp.mosquitero} de ${carp.instaladas} instaladas</span></div>`;
-  }
-  html+=`</div>`;
-  return html;
 }
 
 // ---------- REPORTES ----------
@@ -749,7 +733,7 @@ function renderReportes(){
     insts.forEach(r=>{
       if(r.salida&&!r.llegada) redFlags.push(`Falta registrar llegada a obra (${obraNombre(r.obraId)}, salió ${r.salida})`);
       else if(r.llegada&&!r.salidaObra) redFlags.push(`Falta registrar salida de obra hacia el taller (${obraNombre(r.obraId)}, llegó ${r.llegada})`);
-      else if(r.salidaObra&&!r.llegadaTaller) redFlags.push(`Falta registrar llegada al taller (${obraNombre(r.obraId)}, salió de obra ${r.salidaObra})`);
+      else if(r.salidaObra&&!r.llegadaTaller&&!r.vaAOtraObra) redFlags.push(`Falta registrar llegada al taller (${obraNombre(r.obraId)}, salió de obra ${r.salidaObra})`);
     });
     const diff=horasPersonales-jornada;
     if(redFlags.length===0 && Math.abs(diff)>0.25) warnFlags.push(`Las horas no cuadran con la jornada de ${jornada}h: ${diff>0?'sobran':'faltan'} ${Math.abs(diff).toFixed(1)}h`);
@@ -779,6 +763,8 @@ function renderReportes(){
         const todosAyudantes=DB.personas.filter(p=>!esJefeRol(p.rol) && (estaActivo(p)||(r.ayudantesIds||[]).includes(p.id)));
         if(reportEditKey===key){
           html+=`<div class="detail-item">
+            <label>Obra</label>
+            <select id="edit-reg-obra-${r.id}">${selectObrasOpts(r.obraId)}</select>
             <label>Personas en este registro</label>
             ${todosAyudantes.map(a=>`<label class="check-row"><input type="checkbox" class="edit-ayu-${r.id}" value="${a.id}" ${ (r.ayudantesIds||[]).includes(a.id)?'checked':''}> ${a.nombre} <span class="badge ${areaInfo(a.areaId).badge}" style="margin-left:4px;">${areaInfo(a.areaId).nombre}</span></label>`).join('')}
             <label class="check-row"><input type="checkbox" id="edit-incluye-jefe-${r.id}" ${r.incluyeJefe?'checked':''}> Incluye al jefe</label>
@@ -796,9 +782,12 @@ function renderReportes(){
         const key='ins-'+r.id;
         if(reportEditKey===key){
           html+=`<div class="detail-item">
-            <div class="row2"><div><label>Salida hacia obra</label><input type="time" id="edit-ins-salida-${r.id}" value="${r.salida||''}"></div><div><label>Llegada a obra</label><input type="time" id="edit-ins-llegada-${r.id}" value="${r.llegada||''}"></div></div>
+            <label>Obra</label>
+            <select id="edit-ins-obra-${r.id}">${selectObrasOpts(r.obraId)}</select>
+            <div class="row2"><div><label>Salida (${r.vieneDe?'desde '+origenViaje(r):'del taller'})</label><input type="time" id="edit-ins-salida-${r.id}" value="${r.salida||''}"></div><div><label>Llegada a obra</label><input type="time" id="edit-ins-llegada-${r.id}" value="${r.llegada||''}"></div></div>
             <div class="row2"><div><label>Salida de obra</label><input type="time" id="edit-ins-salidaobra-${r.id}" value="${r.salidaObra||''}"></div><div><label>Llegada al taller</label><input type="time" id="edit-ins-llegadataller-${r.id}" value="${r.llegadaTaller||''}"></div></div>
             <div class="row2"><div><label>Carpinterías instaladas</label><input type="number" min="0" step="1" id="edit-ins-carp-${r.id}" value="${r.carpinteriasInstaladas||0}"></div><div><label>Con mosquitero</label><input type="number" min="0" step="1" id="edit-ins-mosq-${r.id}" value="${r.carpinteriasMosquitero||0}"></div></div>
+            <label class="check-row"><input type="checkbox" id="edit-ins-otra-${r.id}" ${r.vaAOtraObra?'checked':''}> Siguió directo a otra obra (no volvió al taller)</label>
             <label>Detalle de lo trabajado</label><textarea id="edit-ins-detalle-${r.id}">${r.detalle||''}</textarea>
             <label>Movimientos de personal</label>
             ${(r.cambios&&r.cambios.length)? r.cambios.map(c=>`<div class="drow">${c.hora} · ${c.tipo==='incorporacion'?'+':'-'} ${personaNombre(c.personaId)}<button class="del" onclick="delCambio('${r.id}','${c.id}')">Quitar</button></div>`).join('') : '<div class="meta">Sin movimientos</div>'}
@@ -807,8 +796,8 @@ function renderReportes(){
         } else {
           html+=`<div class="detail-item">
             <div class="drow"><span>Instalación · ${obraNombre(r.obraId)}</span><span>${contarPersonas(r)} pers. iniciales</span></div>
-            <div class="drow"><span>Taller → Obra</span><span>${r.salida||'—'} → ${r.llegada||'<span style="color:#B4585A;">falta</span>'}</span></div>
-            <div class="drow"><span>Obra → Taller</span><span>${r.salidaObra||'—'} → ${r.llegadaTaller||'<span style="color:#B4585A;">falta</span>'}</span></div>
+            <div class="drow"><span>${origenViaje(r)} → Obra</span><span>${r.salida||'—'} → ${r.llegada||'<span style="color:#B4585A;">falta</span>'}</span></div>
+            ${r.vaAOtraObra?`<div class="drow"><span>Obra → ${destinoViaje(r)}</span><span>salió ${r.salidaObra||'—'}</span></div>`:`<div class="drow"><span>Obra → Taller</span><span>${r.salidaObra||'—'} → ${r.llegadaTaller||'<span style="color:#B4585A;">falta</span>'}</span></div>`}
             ${r.detalle?`<div style="margin-top:6px;font-size:12px;color:var(--steel);">📝 ${r.detalle}</div>`:''}
             ${chipsCambios(r)?`<div style="margin-top:6px;">${chipsCambios(r)}</div>`:''}
             <div class="actions"><button class="btn small ghost" onclick="reportEditKey='${key}'; render();">Editar</button><button class="del" onclick="delInstalacionFromReport('${r.id}')">Eliminar</button></div>
@@ -826,7 +815,8 @@ async function saveRegistroEdit(id){
   const incluyeJefe=document.getElementById('edit-incluye-jefe-'+id).checked;
   const horas=Number(document.getElementById('edit-reg-horas-'+id).value||r.horas);
   const piezas=Number(document.getElementById('edit-reg-piezas-'+id).value||r.piezas);
-  const {error}=await sb.from('registros').update({horas,incluye_jefe:incluyeJefe,piezas}).eq('id',id);
+  const obraId=document.getElementById('edit-reg-obra-'+id).value||r.obraId;
+  const {error}=await sb.from('registros').update({obra_id:obraId,horas,incluye_jefe:incluyeJefe,piezas}).eq('id',id);
   if(sbErr(error)) return;
   const {error:e2}=await sb.from('registros_ayudantes').delete().eq('registro_id',id);
   if(sbErr(e2)) return;
@@ -834,7 +824,7 @@ async function saveRegistroEdit(id){
     const {error:e3}=await sb.from('registros_ayudantes').insert(ayudantesIds.map(pid=>({registro_id:id,persona_id:pid})));
     if(sbErr(e3)) return;
   }
-  r.ayudantesIds=ayudantesIds; r.incluyeJefe=incluyeJefe; r.horas=horas; r.piezas=piezas;
+  r.obraId=obraId; r.ayudantesIds=ayudantesIds; r.incluyeJefe=incluyeJefe; r.horas=horas; r.piezas=piezas;
   toast('Registro actualizado ✓'); reportEditKey=null; render();
 }
 async function delRegistroFromReport(id){
@@ -856,9 +846,14 @@ async function editInsUpdate(id){
   const carp=Number(document.getElementById('edit-ins-carp-'+id).value||0);
   const mosq=Number(document.getElementById('edit-ins-mosq-'+id).value||0);
   const detalle=document.getElementById('edit-ins-detalle-'+id).value.trim();
-  const {error}=await sb.from('instalaciones').update({salida,llegada,salida_obra:salidaObra,llegada_taller:llegadaTaller,carpinterias_instaladas:carp,carpinterias_mosquitero:mosq,detalle}).eq('id',id);
+  const obraId=document.getElementById('edit-ins-obra-'+id).value||r.obraId;
+  const vaAOtraObra=document.getElementById('edit-ins-otra-'+id).checked;
+  if(mosq>carp){ toast('Las carpinterías con mosquitero no pueden ser más que las instaladas'); return; }
+  const upd={obra_id:obraId,salida:salida||null,llegada:llegada||null,salida_obra:salidaObra||null,llegada_taller:llegadaTaller||null,carpinterias_instaladas:carp,carpinterias_mosquitero:mosq,detalle};
+  if(vaAOtraObra!==!!r.vaAOtraObra) upd.va_a_otra_obra=vaAOtraObra;
+  const {error}=await sb.from('instalaciones').update(upd).eq('id',id);
   if(sbErr(error)) return;
-  r.salida=salida; r.llegada=llegada; r.salidaObra=salidaObra; r.llegadaTaller=llegadaTaller; r.carpinteriasInstaladas=carp; r.carpinteriasMosquitero=mosq; r.detalle=detalle;
+  r.obraId=obraId; r.salida=salida; r.llegada=llegada; r.salidaObra=salidaObra; r.llegadaTaller=llegadaTaller; r.carpinteriasInstaladas=carp; r.carpinteriasMosquitero=mosq; r.detalle=detalle; r.vaAOtraObra=vaAOtraObra;
   toast('Registro actualizado ✓'); reportEditKey=null; render();
 }
 async function delCambio(regId,cambioId){
@@ -987,7 +982,7 @@ function tablaProduccion(obraId){
 }
 function tablaInstalacion(obraId){
   return DB.instalaciones.filter(r=>r.obraId===obraId&&r.salida).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.salida.localeCompare(b.salida)).map(r=>({
-    fecha:r.fecha, maestro:personaNombre(r.personaId), personas:contarPersonas(r),
+    fecha:r.fecha, maestro:personaNombre(r.personaId), personas:contarPersonas(r), desde:origenViaje(r), hacia:destinoViaje(r),
     prep:tiempoPreparacion(r), ida:calcHoras(r.salida,r.llegada), trabajoNeto:trabajoBrutoHH(r),
     vuelta:calcHoras(r.salidaObra,r.llegadaTaller), carp:r.carpinteriasInstaladas||0, mosq:r.carpinteriasMosquitero||0
   }));
@@ -998,13 +993,13 @@ function renderTablaProduccion(rows){
   </tbody></table>`;
 }
 function renderTablaInstalacion(rows){
-  return `<table class="cierre-table"><thead><tr><th>Fecha</th><th>Maestro</th><th>Pers.</th><th>Prep.</th><th>Ida</th><th>Trabajo (h-h)</th><th>Vuelta</th><th>Carp.</th><th>Mosq.</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><td>${r.fecha}</td><td>${r.maestro}</td><td>${r.personas}</td><td>${r.prep.toFixed(1)}</td><td>${r.ida.toFixed(1)}</td><td>${r.trabajoNeto.toFixed(1)}</td><td>${r.vuelta.toFixed(1)}</td><td>${r.carp}</td><td>${r.mosq}</td></tr>`).join('')}
+  return `<table class="cierre-table"><thead><tr><th>Fecha</th><th>Maestro</th><th>Pers.</th><th>Desde</th><th>Hacia</th><th>Prep.</th><th>Ida</th><th>Trabajo (h-h)</th><th>Vuelta</th><th>Carp.</th><th>Mosq.</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${r.fecha}</td><td>${r.maestro}</td><td>${r.personas}</td><td>${r.desde}</td><td>${r.hacia}</td><td>${r.prep.toFixed(1)}</td><td>${r.ida.toFixed(1)}</td><td>${r.trabajoNeto.toFixed(1)}</td><td>${r.vuelta.toFixed(1)}</td><td>${r.carp}</td><td>${r.mosq}</td></tr>`).join('')}
   </tbody></table>`;
 }
 function renderCierre(){
   if(DB.obras.length===0) return `<div class="empty"><strong>No hay obras cargadas</strong>Andá a "Config" para crear la primera obra.</div>`;
-  if(!cierreObraId) cierreObraId=DB.obras[0].id;
+  if(!cierreObraId||!DB.obras.some(o=>o.id===cierreObraId)) cierreObraId=(obrasActivas()[0]||DB.obras[0]).id;
   const obra=DB.obras.find(o=>o.id===cierreObraId);
   const pres=presupuestoTotales(cierreObraId), horasReales=horasHombreTotalesObra(cierreObraId), costoReal=costoTotalObra(cierreObraId), carp=carpinteriasObra(cierreObraId), ins=horasInstalacionDetalle(cierreObraId);
   const prodTabla=tablaProduccion(cierreObraId), insTabla=tablaInstalacion(cierreObraId);
@@ -1016,6 +1011,7 @@ function renderCierre(){
     <button class="btn ghost" onclick="window.print()">🖨 Exportar / Imprimir a PDF</button>
     <button class="btn ghost" onclick="exportarCierreExcel()">📊 Exportar horas a Excel</button>
   </div>
+  ${renderEstadoObrasActivas()}
   <div class="print-area">
     <div style="text-align:center;margin-bottom:20px;">
       <div style="color:var(--steel);font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;">Tecnosuisse — Cierre de obra</div>
@@ -1026,7 +1022,7 @@ function renderCierre(){
       <div class="kpi"><div class="val">$${costoReal.toFixed(0)}</div><div class="lbl">Costo real total</div></div>
       <div class="kpi"><div class="val">${pres.monto>0?(costoReal/pres.monto*100).toFixed(0)+'%':'—'}</div><div class="lbl">De $${pres.monto.toFixed(0)} presupuestados</div></div>
       <div class="kpi"><div class="val">${horasReales.toFixed(1)}h</div><div class="lbl">Horas-hombre totales</div></div>
-      <div class="kpi"><div class="val">${carp.instaladas}${pres.carpinterias?(' / '+pres.carpinterias):''}</div><div class="lbl">Carpinterías instaladas</div></div>
+      <div class="kpi"><div class="val">${carp.instaladas}${pres.carpinterias?(' / '+pres.carpinterias):''}</div><div class="lbl">Carpinterías instaladas${pres.carpinterias?' · faltan '+Math.max(pres.carpinterias-carp.instaladas,0):''} · ${carp.mosquitero} c/mosquitero</div></div>
     </div>
     <div class="section-title">Qué área consumió más</div>
     <div class="card">${renderRankingAreas(cierreObraId)}
@@ -1050,6 +1046,25 @@ function renderCierre(){
   </div>`;
 }
 
+function renderEstadoObrasActivas(){
+  const rate=Number(DB.ajustes.costoHora||0);
+  let html='';
+  if(rate===0) html+=`<div class="alert-banner alert-warn no-print"><span class="tag">● Atención</span><span>No hay costo por hora configurado. Definilo en Config → Ajustes.</span></div>`;
+  const filas=obrasActivas().map(o=>{
+    const pres=presupuestoTotales(o.id), hh=horasHombreTotalesObra(o.id), costo=hh*rate;
+    const pctH=pres.horas>0?hh/pres.horas*100:null, pctM=pres.monto>0?costo/pres.monto*100:null;
+    const peor=Math.max(pctH||0,pctM||0);
+    return {o,pctH,pctM,peor};
+  }).sort((a,b)=>b.peor-a.peor);
+  if(!filas.length) return html;
+  html+=`<div class="section-title no-print">Estado de obras activas</div><div class="card no-print">`+filas.map(f=>{
+    const st=f.peor>=100?'crit':(f.peor>=80?'warn':'ok');
+    const color=st==='crit'?'#B4585A':(st==='warn'?'#C8892F':'var(--steel)');
+    const txt=(f.pctH===null&&f.pctM===null)?'sin presupuesto':`${f.pctH!==null?f.pctH.toFixed(0)+'% horas':''}${f.pctH!==null&&f.pctM!==null?' · ':''}${f.pctM!==null?f.pctM.toFixed(0)+'% costo':''}`;
+    return `<div class="list-item" style="cursor:pointer;" onclick="cierreObraId='${f.o.id}'; render();"><span>${st!=='ok'?(st==='crit'?'⚠ ':'● '):''}${f.o.nombre}</span><span class="meta" style="color:${color};font-weight:600;">${txt}</span></div>`;
+  }).join('')+`<div class="empty" style="padding:8px 0 0;text-align:left;">Alerta a partir de 80% (●) y 100% (⚠) del presupuesto. Tocá una obra para ver su cierre.</div></div>`;
+  return html;
+}
 function exportarCierreExcel(){
   const obra=DB.obras.find(o=>o.id===cierreObraId); if(!obra){ toast('Seleccioná una obra'); return; }
   const pres=presupuestoTotales(cierreObraId), ins=horasInstalacionDetalle(cierreObraId), carp=carpinteriasObra(cierreObraId), rate=Number(DB.ajustes.costoHora||0);
@@ -1077,10 +1092,10 @@ function exportarCierreExcel(){
     taller.push([r.fecha,areaInfo(r.areaId).nombre,personaNombre(r.personaId),contarPersonas(r),r.incluyeJefe?'Sí':'No',(r.ayudantesIds||[]).map(personaNombre).join(', '),r.horas,r.horas*contarPersonas(r),r.piezas,r.notas||'']);
   });
 
-  const instal=[['Fecha','Maestro','Personas iniciales','Incluye maestro','Ayudantes iniciales','Salida taller','Llegada obra','Salida obra','Llegada taller','Preparación (h)','Ida (h)','Trabajo bruto (h-h)','Vuelta (h)','Carp. instaladas','Con mosquitero','Movimientos','Detalle']];
+  const instal=[['Fecha','Maestro','Personas iniciales','Incluye maestro','Ayudantes iniciales','Desde','Hacia (al salir)','Salida','Llegada obra','Salida obra','Llegada taller','Preparación (h)','Ida (h)','Trabajo bruto (h-h)','Vuelta (h)','Carp. instaladas','Con mosquitero','Movimientos','Detalle']];
   DB.instalaciones.filter(r=>r.obraId===cierreObraId).sort((a,b)=>a.fecha.localeCompare(b.fecha)||(a.salida||'').localeCompare(b.salida||'')).forEach(r=>{
     const movs=(r.cambios||[]).map(c=>`${c.hora} ${c.tipo==='incorporacion'?'+':'-'}${personaNombre(c.personaId)}`).join('; ');
-    instal.push([r.fecha,personaNombre(r.personaId),contarPersonas(r),r.incluyeJefe?'Sí':'No',(r.ayudantesIds||[]).map(personaNombre).join(', '),r.salida||'',r.llegada||'',r.salidaObra||'',r.llegadaTaller||'',tiempoPreparacion(r),calcHoras(r.salida,r.llegada),trabajoBrutoHH(r),calcHoras(r.salidaObra,r.llegadaTaller),r.carpinteriasInstaladas||0,r.carpinteriasMosquitero||0,movs,r.detalle||'']);
+    instal.push([r.fecha,personaNombre(r.personaId),contarPersonas(r),r.incluyeJefe?'Sí':'No',(r.ayudantesIds||[]).map(personaNombre).join(', '),origenViaje(r),destinoViaje(r),r.salida||'',r.llegada||'',r.salidaObra||'',r.llegadaTaller||'',tiempoPreparacion(r),calcHoras(r.salida,r.llegada),trabajoBrutoHH(r),calcHoras(r.salidaObra,r.llegadaTaller),r.carpinteriasInstaladas||0,r.carpinteriasMosquitero||0,movs,r.detalle||'']);
   });
 
   const wb=XLSX.utils.book_new();
@@ -1248,17 +1263,17 @@ function render(){
   const main=document.getElementById('main');
   if(currentTab!=='captura' && !authenticated){ main.innerHTML=renderPasswordGate(); return; }
   if(currentTab==='captura') main.innerHTML=renderCaptura();
-  else if(currentTab==='panel') main.innerHTML=renderPanel();
   else if(currentTab==='reportes') main.innerHTML=renderReportes();
   else if(currentTab==='cierre') main.innerHTML=renderCierre();
   else main.innerHTML=renderConfig();
-  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v16 · Supabase · Login</div>`;
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v17 · Supabase · Login</div>`;
   if(currentTab==='captura'){
     const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra'), selF=document.getElementById('cap-fecha');
-    const updateDynamic=()=>{ const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
+    const updateDynamic=()=>{ capPersonaId=selP.value; capObraId=selO.value; capFecha=selF?selF.value:''; const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
     if(selP) selP.addEventListener('change',updateDynamic);
     if(selO) selO.addEventListener('change',updateDynamic);
     if(selF) selF.addEventListener('change',updateDynamic);
+    if(selP && selP.value) updateDynamic();
   }
 }
 document.querySelectorAll('nav.tabs button').forEach(btn=>{
