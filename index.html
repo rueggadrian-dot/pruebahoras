@@ -341,7 +341,11 @@ function tiempoPreparacion(r){
   const horaEntrada=DB.ajustes.horaEntradaTaller;
   if(!horaEntrada || !r.salida) return 0;
   if(!esPrimerViajeDelDia(r)) return 0;
-  return Math.max(calcHoras(horaEntrada,r.salida),0);
+  // Si salen antes (o a la misma hora) de la entrada al taller, no hubo preparación.
+  // No usar calcHoras aquí: suma 24h cuando la segunda hora es menor (cruce de medianoche).
+  const [eh,em]=String(horaEntrada).split(':').map(Number), [sh,sm]=String(r.salida).split(':').map(Number);
+  const mins=(sh*60+sm)-(eh*60+em);
+  return mins>0 ? mins/60 : 0;
 }
 function horasHombreTotalesObra(obraId){
   const ins=horasInstalacionDetalle(obraId);
@@ -1266,7 +1270,7 @@ function render(){
   else if(currentTab==='reportes') main.innerHTML=renderReportes();
   else if(currentTab==='cierre') main.innerHTML=renderCierre();
   else main.innerHTML=renderConfig();
-  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v17 · Supabase · Login</div>`;
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v18 · Supabase · Login</div>`;
   if(currentTab==='captura'){
     const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra'), selF=document.getElementById('cap-fecha');
     const updateDynamic=()=>{ capPersonaId=selP.value; capObraId=selO.value; capFecha=selF?selF.value:''; const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
