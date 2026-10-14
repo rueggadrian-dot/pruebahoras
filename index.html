@@ -114,7 +114,19 @@
   table.cierre-table{width:100%;border-collapse:collapse;font-size:12px;font-family:'IBM Plex Mono',monospace;}
   table.cierre-table th, table.cierre-table td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;}
   table.cierre-table th{font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:10px;letter-spacing:.05em;color:var(--steel);}
+  .b-mant{background:#E6DDEE;color:#6A4A80;}
+  nav.tabs{overflow-x:auto;scrollbar-width:none;}
+  nav.tabs::-webkit-scrollbar{display:none;}
+  nav.tabs button{flex:1 0 auto;padding:9px 8px;white-space:nowrap;}
+  .garantia-box{display:flex;gap:12px;align-items:center;margin-top:16px;padding:14px;border:2px dashed var(--amber);background:var(--amber-soft);border-radius:4px;color:#7A4A18;font-size:14px;text-transform:none;letter-spacing:0;cursor:pointer;}
+  .garantia-box input{transform:scale(1.6);accent-color:var(--amber);}
+  .garantia-box.on{border-style:solid;background:#F9D2AE;}
+  .garantia-box small{font-weight:400;}
+  .print-only{display:none;}
   @media print{
+    .print-only{display:block !important;}
+    .print-head{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.04em;margin-bottom:8px;}
+    .totales-box{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     header.top, nav.tabs, .footnote, .no-print{ display:none !important; }
     body{ background:#fff; }
     .app{ max-width:100%; }
@@ -127,12 +139,14 @@
 <body>
 <div class="app">
   <header class="top">
-    <div class="eyebrow">Tecnosuisse · Vidrio / Carpintería / Instalación</div>
+    <div class="eyebrow">Tecnosuisse · Vidrio / Carpintería / Instalación / Mantenimiento</div>
     <h1>Control de Producción</h1>
     <nav class="tabs">
       <button data-tab="captura" class="active">Captura</button>
+      <button data-tab="mantenimientos">Mantenimientos</button>
       <button data-tab="reportes">Reportes</button>
       <button data-tab="cierre">Cierre</button>
+      <button data-tab="cierremant">Cierre Mant.</button>
       <button data-tab="config">Config</button>
     </nav>
   </header>
@@ -142,7 +156,8 @@
 
 <script>
 const AREAS=[{id:'vidrio',nombre:'Vidrio',badge:'b-vidrio'},{id:'carpinteria',nombre:'Carpintería',badge:'b-carpinteria'},{id:'instalacion',nombre:'Instalación',badge:'b-instalacion'}];
-const ROLES={vidrio:['Jefe de Vidrio','Ayudante de Vidrio'],carpinteria:['Jefe de Carpintería','Ayudante de Carpintería'],instalacion:['Maestro de Obra','Ayudante de Instalación']};
+const AREA_MANT={id:'mantenimiento',nombre:'Mantenimiento',badge:'b-mant'};
+const ROLES={vidrio:['Jefe de Vidrio','Ayudante de Vidrio'],carpinteria:['Jefe de Carpintería','Ayudante de Carpintería'],instalacion:['Maestro de Obra','Ayudante de Instalación'],mantenimiento:['Encargado de Mantenimiento','Ayudante de Mantenimiento']};
 const JEFE_ROLES=['Jefe de Vidrio','Jefe de Carpintería','Maestro de Obra'];
 const ALMUERZO=0.5;
 const PALETA=['#2B4C5C','#E8873A','#4C7A5E','#8A5FA0','#C4483A','#3E6B7F','#B08D3E','#5C7A8A','#7A5A2E','#4C6236'];
@@ -151,7 +166,7 @@ const SUPABASE_URL='https://dlycauyzobzxsgirsskp.supabase.co';
 const SUPABASE_KEY='sb_publishable_TYalmYmXM9og3gfKuCpoDw_vE9q8GO3';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-let DB={obras:[],personas:[],presupuestos:[],registros:[],instalaciones:[],ajustes:{costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00'}};
+let DB={obras:[],personas:[],presupuestos:[],registros:[],instalaciones:[],mant:[],mantItems:[],notionObras:[],ajustes:{costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00',precioHoraMantBs:0,factorMant:1.508}};
 let currentTab='captura';
 let capPersonaId='', capObraId='', capFecha='';
 let configSub='obras';
@@ -212,10 +227,11 @@ async function loadAll(){
   }));
 
   const aj=(ajustesR.data||[])[0];
-  DB.ajustes=aj? {costoHora:Number(aj.costo_hora),jornadaEstandar:Number(aj.jornada_estandar),horaEntradaTaller:t5(aj.hora_entrada_taller)} : {costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00'};
+  DB.ajustes=aj? {costoHora:Number(aj.costo_hora),jornadaEstandar:Number(aj.jornada_estandar),horaEntradaTaller:t5(aj.hora_entrada_taller),precioHoraMantBs:Number(aj.precio_hora_mant_bs||0),factorMant:Number(aj.factor_mant||1.508)} : {costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00',precioHoraMantBs:0,factorMant:1.508};
+  await Promise.all([recargarMant(),recargarCatalogos()]);
 }
 
-function areaInfo(id){ return AREAS.find(a=>a.id===id); }
+function areaInfo(id){ return AREAS.find(a=>a.id===id) || (id==='mantenimiento'?AREA_MANT:{id,nombre:id||'—',badge:''}); }
 function estaActivo(p){ return p && p.activo!==false; }
 function renderAyudantesChecklist(areaId,cssClass){
   const propios=DB.personas.filter(p=>p.areaId===areaId && !esJefeRol(p.rol) && estaActivo(p));
@@ -230,9 +246,10 @@ function renderAyudantesChecklist(areaId,cssClass){
 function personaTieneHistorial(id){
   if(DB.registros.some(r=>r.personaId===id||(r.ayudantesIds||[]).includes(id))) return true;
   if(DB.instalaciones.some(r=>r.personaId===id||(r.ayudantesIds||[]).includes(id)||(r.cambios||[]).some(c=>c.personaId===id))) return true;
+  if(DB.mant.some(m=>m.personaId===id||(m.ayudantesIds||[]).includes(id))) return true;
   return false;
 }
-function obraNombre(id){ const o=DB.obras.find(x=>x.id===id); return o?o.nombre:'—'; }
+function obraNombre(id){ if(id==='MANT') return 'Mantenimiento'; const o=DB.obras.find(x=>x.id===id); return o?o.nombre:'—'; }
 function obrasActivas(){ return DB.obras.filter(o=>!o.terminada); }
 function selectObrasOpts(actualId){
   return DB.obras.filter(o=>!o.terminada||o.id===actualId).map(o=>`<option value="${o.id}" ${o.id===actualId?'selected':''}>${o.nombre}${o.terminada?' (terminada)':''}</option>`).join('');
@@ -241,7 +258,7 @@ function obraTieneHistorial(id){
   return DB.registros.some(r=>r.obraId===id) || DB.instalaciones.some(r=>r.obraId===id) || DB.presupuestos.some(p=>p.obraId===id);
 }
 function personaNombre(id){ const p=DB.personas.find(x=>x.id===id); return p?p.nombre:'—'; }
-function colorForObra(obraId){ const i=DB.obras.findIndex(o=>o.id===obraId); return PALETA[(i<0?0:i)%PALETA.length]; }
+function colorForObra(obraId){ if(obraId==='MANT') return '#8A5FA0'; const i=DB.obras.findIndex(o=>o.id===obraId); return PALETA[(i<0?0:i)%PALETA.length]; }
 
 // ---------- CÁLCULOS ----------
 function calcHoras(h1,h2){
@@ -402,6 +419,7 @@ function personaHorasHoyExistente(personaId,fecha){
   });
   DB.instalaciones.filter(r=>r.fecha===fecha).forEach(r=>{ total+=horasPersonalesInstalacionBruta(r,personaId); });
   if(almuerzoObraAsignada(personaId,fecha)) total-=ALMUERZO;
+  DB.mant.filter(m=>m.fecha===fecha).forEach(m=>{ total+=horasMantPersona(m,personaId); });
   return Math.max(total,0);
 }
 function desglosePersonaFecha(personaId,fecha){
@@ -415,6 +433,7 @@ function desglosePersonaFecha(personaId,fecha){
   });
   const lunchObra=almuerzoObraAsignada(personaId,fecha);
   if(lunchObra && map[lunchObra]!==undefined) map[lunchObra]=Math.max(map[lunchObra]-ALMUERZO,0);
+  DB.mant.filter(m=>m.fecha===fecha).forEach(m=>{ const h=horasMantPersona(m,personaId); if(h>0) map.MANT=(map.MANT||0)+h; });
   return map;
 }
 
@@ -714,6 +733,7 @@ function renderReportes(){
   const personaIds=new Set();
   DB.registros.filter(r=>r.fecha===fecha).forEach(r=>{ if(r.incluyeJefe) personaIds.add(r.personaId); (r.ayudantesIds||[]).forEach(id=>personaIds.add(id)); });
   DB.instalaciones.filter(r=>r.fecha===fecha).forEach(r=>{ if(r.incluyeJefe) personaIds.add(r.personaId); (r.ayudantesIds||[]).forEach(id=>personaIds.add(id)); (r.cambios||[]).forEach(c=>personaIds.add(c.personaId)); });
+  DB.mant.filter(m=>m.fecha===fecha).forEach(m=>mantMiembros(m).forEach(id=>personaIds.add(id)));
 
   let html=`<div class="card"><label>Fecha a revisar</label><input type="date" id="rep-fecha" value="${fecha}" onchange="reportesFecha=this.value; reportEditKey=null; agregandoInstalacionManual=false; render();"></div>`;
 
@@ -1117,9 +1137,10 @@ function renderConfig(){
     <button class="${configSub==='obras'?'active':''}" onclick="configSub='obras';render();">Obras</button>
     <button class="${configSub==='equipos'?'active':''}" onclick="configSub='equipos';render();">Equipos</button>
     <button class="${configSub==='presupuesto'?'active':''}" onclick="configSub='presupuesto';render();">Presupuesto</button>
+    <button class="${configSub==='mantenimiento'?'active':''}" onclick="configSub='mantenimiento';render();">Mantenimiento</button>
     <button class="${configSub==='ajustes'?'active':''}" onclick="configSub='ajustes';render();">Ajustes</button>
   </div>
-  ${configSub==='obras'?renderObrasConfig():configSub==='equipos'?renderEquiposConfig():configSub==='presupuesto'?renderPresupuestoConfig():renderAjustesConfig()}`;
+  ${configSub==='obras'?renderObrasConfig():configSub==='equipos'?renderEquiposConfig():configSub==='presupuesto'?renderPresupuestoConfig():configSub==='mantenimiento'?renderMantConfig():renderAjustesConfig()}`;
 }
 function renderObrasConfig(){
   const activas=DB.obras.filter(o=>!o.terminada), terminadas=DB.obras.filter(o=>o.terminada);
@@ -1156,15 +1177,15 @@ async function borrarObra(id){
 
 function renderEquiposConfig(){
   return `<div class="card"><label>Nombre</label><input type="text" id="new-persona-nombre" placeholder="Ej: Marco Suárez">
-  <label>Área</label><select id="new-persona-area" onchange="updateRolOptions()">${AREAS.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('')}</select>
+  <label>Área</label><select id="new-persona-area" onchange="updateRolOptions()">${[...AREAS,AREA_MANT].map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('')}</select>
   <label>Rol</label><select id="new-persona-rol">${ROLES['vidrio'].map(r=>`<option>${r}</option>`).join('')}</select>
   <button class="btn" onclick="crearPersona()">Agregar al equipo</button></div>
-  ${AREAS.map(area=>{
+  ${[...AREAS,AREA_MANT].map(area=>{
     const activos=DB.personas.filter(p=>p.areaId===area.id && estaActivo(p));
     const inactivos=DB.personas.filter(p=>p.areaId===area.id && !estaActivo(p));
-    let html=`<div class="section-title">${area.nombre}</div><div class="card">${activos.length===0?'<div class="empty">Nadie cargado todavía</div>':activos.map(p=>`<div class="list-item"><span><span class="badge ${area.badge}">${esJefeRol(p.rol)?'JEFE':'AYUDANTE'}</span><br>${p.nombre}</span><button class="del" onclick="desactivarPersona('${p.id}')">Desactivar</button></div>`).join('')}</div>`;
+    let html=`<div class="section-title">${area.nombre}</div><div class="card">${activos.length===0?'<div class="empty">Nadie cargado todavía</div>':activos.map(p=>`<div class="list-item"><span><span class="badge ${area.badge}">${esJefeRol(p.rol)?'JEFE':(p.rol==='Encargado de Mantenimiento'?'ENCARGADO':'AYUDANTE')}</span><br>${p.nombre}</span><button class="del" onclick="desactivarPersona('${p.id}')">Desactivar</button></div>`).join('')}</div>`;
     if(inactivos.length){
-      html+=`<div class="card" style="opacity:.7;"><div class="empty" style="padding:0 0 8px;text-align:left;">Inactivos (no aparecen en Captura, pero su historial se conserva)</div>${inactivos.map(p=>`<div class="list-item"><span><span class="badge ${area.badge}">${esJefeRol(p.rol)?'JEFE':'AYUDANTE'}</span><br>${p.nombre}</span><span style="display:flex;gap:6px;"><button class="btn small ghost" onclick="reactivarPersona('${p.id}')">Reactivar</button>${personaTieneHistorial(p.id)?'':`<button class="del" onclick="borrarPersonaDefinitivo('${p.id}')">Eliminar</button>`}</span></div>`).join('')}</div>`;
+      html+=`<div class="card" style="opacity:.7;"><div class="empty" style="padding:0 0 8px;text-align:left;">Inactivos (no aparecen en Captura, pero su historial se conserva)</div>${inactivos.map(p=>`<div class="list-item"><span><span class="badge ${area.badge}">${esJefeRol(p.rol)?'JEFE':(p.rol==='Encargado de Mantenimiento'?'ENCARGADO':'AYUDANTE')}</span><br>${p.nombre}</span><span style="display:flex;gap:6px;"><button class="btn small ghost" onclick="reactivarPersona('${p.id}')">Reactivar</button>${personaTieneHistorial(p.id)?'':`<button class="del" onclick="borrarPersonaDefinitivo('${p.id}')">Eliminar</button>`}</span></div>`).join('')}</div>`;
     }
     return html;
   }).join('')}`;
@@ -1251,7 +1272,7 @@ async function guardarAjustes(){
   const nuevos={costoHora:Number(costoHora||0), jornadaEstandar:Number(jornada||9.5), horaEntradaTaller:horaEntrada||'07:00'};
   const {error}=await sb.from('ajustes').update({costo_hora:nuevos.costoHora, jornada_estandar:nuevos.jornadaEstandar, hora_entrada_taller:nuevos.horaEntradaTaller}).eq('id',1);
   if(sbErr(error)) return;
-  DB.ajustes=nuevos; toast('Ajustes guardados ✓'); render();
+  DB.ajustes={...DB.ajustes,...nuevos}; toast('Ajustes guardados ✓'); render();
 }
 function exportarRespaldo(){
   const data=JSON.stringify(DB,null,2);
@@ -1262,15 +1283,366 @@ function exportarRespaldo(){
   toast('Respaldo descargado ✓');
 }
 
+// =================== MANTENIMIENTOS (v19) ===================
+let mantForm=null;
+function mantFormNuevo(){
+  const enc=encargadosMant();
+  return {encargadoId:enc.length===1?enc[0].id:'', fecha:todayStr(), obraTexto:'', notionObraId:null, direccion:'',
+    garantia:false, incluye:true, ayudantes:[], items:[], detalle:'', ingreso:'', salida:'', transporte:''};
+}
+function encargadosMant(){ return DB.personas.filter(p=>p.areaId==='mantenimiento' && p.rol==='Encargado de Mantenimiento' && estaActivo(p)); }
+function minutosEntre(a,b){
+  if(!a||!b) return 0;
+  const [ah,am]=String(a).split(':').map(Number),[bh,bm]=String(b).split(':').map(Number);
+  const d=(bh*60+bm)-(ah*60+am); return d>0?d:0;
+}
+function mantMiembros(m){ const s=[...(m.ayudantesIds||[])]; if(m.incluyeJefe) s.push(m.personaId); return s; }
+function horasMantPersona(m,pid){ return mantMiembros(m).includes(pid)? (minutosEntre(m.horaIngreso,m.horaSalida)+Number(m.transporteMin||0))/60 : 0; }
+// MISMA fórmula que la función de Supabase (calc.ts)
+function calcMantenimiento(m){
+  const personas=mantMiembros(m).length;
+  const tc=Number(m.tipoCambio||0), ph=Number(m.precioHoraBs||0), factor=Number(m.factor||0);
+  const horasTrabajo=minutosEntre(m.horaIngreso,m.horaSalida)/60, horasTransporte=Number(m.transporteMin||0)/60;
+  const itemsUsd=(m.items||[]).reduce((s,i)=>s+Number(i.precioUsd)*Number(i.cantidad),0);
+  const itemsBs=itemsUsd*tc, manoObraBs=horasTrabajo*personas*ph, transporteBs=horasTransporte*personas*ph;
+  const subtotalBs=itemsBs+manoObraBs+transporteBs, totalBs=subtotalBs*factor;
+  return {personas,horasTrabajo,horasTransporte,itemsUsd,itemsBs,manoObraBs,transporteBs,subtotalBs,totalBs,cobroClienteBs:m.garantia?0:totalBs};
+}
+const fmtNum=(n,d=2)=>Number(n||0).toLocaleString('es-BO',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtBs=n=>'Bs '+fmtNum(n);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function obraLabelNotion(o){ return o.nombre+(o.codigoCliente?' · '+o.codigoCliente:''); }
+function mantCodigo(m){ return m.codigoM?('M'+m.codigoM):'M—'; }
+function chipNotion(m){
+  if(m.notionEstado==='ok') return `<span class="chip" style="background:var(--green-soft);color:#2F5A40;">Notion ✓</span>`;
+  if(m.notionEstado==='error') return `<span class="chip out" title="${esc(m.notionError||'')}">Notion: error</span>`;
+  return `<span class="chip" style="background:var(--amber-soft);color:#7A4A18;">Notion: pendiente</span>`;
+}
+
+function renderMantenimientos(){
+  if(!mantForm) mantForm=mantFormNuevo();
+  const f=mantForm, enc=encargadosMant();
+  if(enc.length===0) return `<div class="empty"><strong>No hay encargado de mantenimiento</strong>Cargalo en Config → Equipos, área Mantenimiento.</div>`;
+  const vinculada=f.notionObraId? DB.notionObras.find(o=>o.id===f.notionObraId):null;
+  const equipo=DB.personas.filter(p=>estaActivo(p) && p.id!==f.encargadoId && p.rol!=='Encargado de Mantenimiento');
+  const recientes=[...DB.mant].sort((a,b)=>(b.fecha+b.createdAt).localeCompare(a.fecha+a.createdAt)).slice(0,8);
+  return `<div class="section-title">Registro de mantenimiento</div>
+  <div class="card">
+    <label>Encargado</label>
+    <select onchange="mantForm.encargadoId=this.value; render();"><option value="">Seleccioná…</option>${enc.map(p=>`<option value="${p.id}" ${p.id===f.encargadoId?'selected':''}>${esc(p.nombre)}</option>`).join('')}</select>
+    <label>Fecha</label>
+    <input type="date" value="${f.fecha}" max="${todayStr()}" oninput="mantForm.fecha=this.value">
+    <label>Obra</label>
+    <input type="text" list="dl-notion-obras" id="mant-obra" value="${esc(f.obraTexto)}" placeholder="Escribí para buscar la obra en Notion…" oninput="mantObraInput(this.value)" autocomplete="off">
+    <datalist id="dl-notion-obras">${DB.notionObras.map(o=>`<option value="${esc(obraLabelNotion(o))}">`).join('')}</datalist>
+    <div id="mant-obra-estado">${renderMantObraEstado()}</div>
+    <label>Dirección</label>
+    <input type="text" id="mant-direccion" value="${esc(f.direccion)}" placeholder="Calle, número, barrio" oninput="mantForm.direccion=this.value">
+    <label class="garantia-box"><input type="checkbox" ${f.garantia?'checked':''} onchange="mantForm.garantia=this.checked; this.closest('.garantia-box').classList.toggle('on',this.checked);"> <span><b>¿Es por GARANTÍA?</b><br><small>Marcalo solo si el cliente no paga este mantenimiento.</small></span></label>
+  </div>
+
+  <div class="section-title">Equipo</div>
+  <div class="card">
+    <label class="check-row"><input type="checkbox" ${f.incluye?'checked':''} onchange="mantForm.incluye=this.checked"> Me incluyo yo también</label>
+    <label style="margin-top:12px;">¿Quiénes te acompañaron?</label>
+    ${equipo.length? equipo.map(p=>`<label class="check-row"><input type="checkbox" value="${p.id}" ${f.ayudantes.includes(p.id)?'checked':''} onchange="mantToggleAyudante(this.value,this.checked)"> ${esc(p.nombre)} <span class="badge ${areaInfo(p.areaId).badge}" style="margin-left:6px;">${areaInfo(p.areaId).nombre}</span></label>`).join('') : '<div class="empty" style="padding:8px 0;">No hay más personas cargadas.</div>'}
+  </div>
+
+  <div class="section-title">Piezas utilizadas</div>
+  <div class="card">
+    ${DB.mantItems.length? `<input type="text" id="mant-item-q" placeholder="Buscar por código o descripción…" oninput="document.getElementById('mant-item-res').innerHTML=renderMantItemResultados(this.value)" autocomplete="off">
+    <div id="mant-item-res"></div>` : `<div class="empty" style="padding:8px 0;">Todavía no hay ítems cargados. Se importan en Config → Mantenimiento.</div>`}
+    <div id="mant-items-sel">${renderMantItemsSel()}</div>
+    <label>Detalle del trabajo</label>
+    <textarea placeholder="Qué se hizo y qué piezas se cambiaron" oninput="mantForm.detalle=this.value">${esc(f.detalle)}</textarea>
+  </div>
+
+  <div class="section-title">Tiempos</div>
+  <div class="card">
+    <div class="row2">
+      <div><label>Hora de ingreso a la obra</label><input type="time" value="${f.ingreso}" oninput="mantForm.ingreso=this.value"></div>
+      <div><label>Hora de salida de la obra</label><input type="time" value="${f.salida}" oninput="mantForm.salida=this.value"></div>
+    </div>
+    <label>Transporte total, ida y vuelta (minutos)</label>
+    <input type="number" min="0" step="5" value="${f.transporte}" placeholder="Ej: 40" oninput="mantForm.transporte=this.value">
+    <button class="btn" id="btn-guardar-mant" onclick="guardarMantenimiento()">Guardar mantenimiento</button>
+  </div>
+
+  ${recientes.length?`<div class="section-title">Últimos registrados</div><div class="card">${recientes.map(m=>`<div class="list-item"><span><b>${mantCodigo(m)}</b> · ${m.fecha}${m.garantia?' · <span class="chip" style="background:var(--amber-soft);color:#7A4A18;">Garantía</span>':''}<br><span class="meta">${esc(m.obraNombre)}${m.notionObraId?'':' · sin vincular'}</span></span><span style="display:flex;gap:6px;align-items:center;">${chipNotion(m)}${m.notionEstado!=='ok'?`<button class="btn small ghost" onclick="sincronizarMant('${m.id}')">Reintentar</button>`:''}</span></div>`).join('')}</div>`:''}`;
+}
+function renderMantObraEstado(){
+  const f=mantForm;
+  if(!f.obraTexto) return `<div class="meta" style="margin-top:4px;">${DB.notionObras.length} obras disponibles desde Notion.</div>`;
+  if(f.notionObraId) return `<div class="flag-line" style="color:var(--green);">✓ Vinculada a la obra de Notion</div>`;
+  return `<div class="flag-line f-warn">● No está en la lista de Notion: se guarda como <b>sin asignar</b>. Completá bien el nombre y la dirección.</div>`;
+}
+function mantObraInput(v){
+  mantForm.obraTexto=v;
+  const o=DB.notionObras.find(x=>obraLabelNotion(x)===v);
+  mantForm.notionObraId=o?o.id:null;
+  if(o && o.direccion && !mantForm.direccion){ mantForm.direccion=o.direccion; const d=document.getElementById('mant-direccion'); if(d) d.value=o.direccion; }
+  const e=document.getElementById('mant-obra-estado'); if(e) e.innerHTML=renderMantObraEstado();
+}
+function mantToggleAyudante(id,on){ const s=new Set(mantForm.ayudantes); on?s.add(id):s.delete(id); mantForm.ayudantes=[...s]; }
+function renderMantItemResultados(q){
+  q=(q||'').trim().toLowerCase();
+  if(q.length<2) return '';
+  const res=DB.mantItems.filter(i=>i.activo && (i.codigo.toLowerCase().includes(q)||i.descripcion.toLowerCase().includes(q))).slice(0,15);
+  if(!res.length) return `<div class="meta" style="padding:8px 0;">Sin coincidencias. Si la pieza no está en la lista, anotala en el detalle.</div>`;
+  return res.map(i=>`<div class="list-item"><span><b>${esc(i.codigo)}</b><br><span class="meta">${esc(i.descripcion)}</span></span><button class="btn small" onclick="mantAgregarItem('${i.id}')">+ Agregar</button></div>`).join('');
+}
+function mantAgregarItem(id){
+  const it=DB.mantItems.find(i=>i.id===id); if(!it) return;
+  const ex=mantForm.items.find(x=>x.itemId===id);
+  if(ex) ex.cantidad=Number(ex.cantidad)+1; else mantForm.items.push({itemId:id,codigo:it.codigo,descripcion:it.descripcion,precioUsd:it.precioUsd,cantidad:1});
+  document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();
+  toast(it.codigo+' agregado');
+}
+function renderMantItemsSel(){
+  if(!mantForm.items.length) return `<div class="meta" style="padding:8px 0;">Ninguna pieza agregada.</div>`;
+  return `<label>Piezas agregadas</label>`+mantForm.items.map((x,ix)=>`<div class="list-item"><span><b>${esc(x.codigo)}</b><br><span class="meta">${esc(x.descripcion)}</span></span><span style="display:flex;gap:6px;align-items:center;"><input type="number" min="0.01" step="1" value="${x.cantidad}" style="width:72px;" oninput="mantForm.items[${ix}].cantidad=this.value"><button class="del" onclick="mantForm.items.splice(${ix},1); document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();">Quitar</button></span></div>`).join('');
+}
+async function guardarMantenimiento(){
+  const f=mantForm;
+  if(!f.encargadoId) return toast('Elegí el encargado');
+  if(!f.fecha) return toast('Elegí la fecha');
+  if(!f.obraTexto.trim()) return toast('Escribí o elegí la obra');
+  if(!f.direccion.trim()) return toast('Completá la dirección');
+  if(!f.detalle.trim()) return toast('Escribí el detalle del trabajo');
+  if(!f.ingreso||!f.salida) return toast('Completá hora de ingreso y de salida');
+  if(minutosEntre(f.ingreso,f.salida)<=0) return toast('La hora de salida tiene que ser posterior al ingreso');
+  if(f.transporte===''||Number(f.transporte)<0) return toast('Completá los minutos de transporte (0 si no hubo)');
+  if((f.ayudantes.length+(f.incluye?1:0))===0) return toast('Seleccioná al menos una persona');
+  if(f.items.some(x=>!(Number(x.cantidad)>0))) return toast('Revisá las cantidades de las piezas');
+  const btn=document.getElementById('btn-guardar-mant'); if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  const nombre=f.notionObraId? (DB.notionObras.find(o=>o.id===f.notionObraId)||{}).nombre||f.obraTexto : f.obraTexto.trim();
+  const {data,error}=await sb.from('mantenimientos').insert({
+    fecha:f.fecha, persona_id:f.encargadoId, incluye_jefe:f.incluye, notion_obra_id:f.notionObraId, obra_nombre:nombre,
+    direccion:f.direccion.trim(), garantia:f.garantia, detalle:f.detalle.trim(), hora_ingreso:f.ingreso, hora_salida:f.salida,
+    transporte_min:Math.round(Number(f.transporte)), precio_hora_bs:Number(DB.ajustes.precioHoraMantBs||0), factor:Number(DB.ajustes.factorMant||1.508)
+  }).select().single();
+  if(sbErr(error)){ if(btn){btn.disabled=false; btn.textContent='Guardar mantenimiento';} return; }
+  if(f.ayudantes.length){ const {error:e}=await sb.from('mantenimientos_ayudantes').insert(f.ayudantes.map(pid=>({mantenimiento_id:data.id,persona_id:pid}))); sbErr(e); }
+  if(f.items.length){ const {error:e}=await sb.from('mantenimientos_items').insert(f.items.map(x=>({mantenimiento_id:data.id,item_id:x.itemId,codigo:x.codigo,descripcion:x.descripcion,precio_usd:x.precioUsd,cantidad:Number(x.cantidad)}))); sbErr(e); }
+  mantForm=mantFormNuevo(); mantForm.encargadoId=f.encargadoId;
+  await recargarMant(); render();
+  toast('Guardado ✓ Enviando a Notion…');
+  await sincronizarMant(data.id, true);
+}
+async function sincronizarMant(id, silencioso){
+  try{
+    const {data,error}=await sb.functions.invoke('mantenimientos',{body:{action:'sincronizar',id}});
+    if(error) throw error;
+    await recargarMant(); render();
+    if(data && data.ok) toast(`M${data.codigo_m} registrado en Notion ✓`);
+    else if(data && data.ya_sincronizado) toast('Ya estaba en Notion');
+    else toast('Guardado, pero Notion falló: '+((data&&data.error)||'error desconocido'));
+  }catch(e){ await recargarMant(); render(); toast('Guardado. Notion quedó pendiente: '+(e.message||e)); }
+}
+async function recargarMant(){
+  const [mR,aR,iR]=await Promise.all([sb.from('mantenimientos').select('*'),sb.from('mantenimientos_ayudantes').select('*'),sb.from('mantenimientos_items').select('*')]);
+  if(sbErr(mR.error)||sbErr(aR.error)||sbErr(iR.error)) return;
+  const ay={}, it={};
+  (aR.data||[]).forEach(r=>{(ay[r.mantenimiento_id]=ay[r.mantenimiento_id]||[]).push(r.persona_id);});
+  (iR.data||[]).forEach(r=>{(it[r.mantenimiento_id]=it[r.mantenimiento_id]||[]).push({id:r.id,itemId:r.item_id,codigo:r.codigo,descripcion:r.descripcion,precioUsd:Number(r.precio_usd),cantidad:Number(r.cantidad)});});
+  DB.mant=(mR.data||[]).map(r=>({id:r.id,codigoM:r.codigo_m,fecha:r.fecha,personaId:r.persona_id,incluyeJefe:r.incluye_jefe,notionObraId:r.notion_obra_id,
+    obraNombre:r.obra_nombre,direccion:r.direccion,garantia:r.garantia,detalle:r.detalle,horaIngreso:t5(r.hora_ingreso),horaSalida:t5(r.hora_salida),
+    transporteMin:Number(r.transporte_min||0),tipoCambio:r.tipo_cambio==null?null:Number(r.tipo_cambio),precioHoraBs:Number(r.precio_hora_bs||0),factor:Number(r.factor||0),
+    notionPageId:r.notion_page_id,notionEstado:r.notion_estado,notionError:r.notion_error,createdAt:r.created_at||'',ayudantesIds:ay[r.id]||[],items:it[r.id]||[]}));
+}
+async function recargarCatalogos(){
+  const [cR,oR]=await Promise.all([sb.from('mant_items').select('*').order('codigo'),sb.from('notion_obras').select('*').order('nombre')]);
+  if(!cR.error) DB.mantItems=(cR.data||[]).map(r=>({id:r.id,codigo:r.codigo,descripcion:r.descripcion,precioUsd:Number(r.precio_usd),activo:r.activo}));
+  if(!oR.error){ DB.notionObras=(oR.data||[]).map(r=>({id:r.notion_page_id,nombre:r.nombre,codigoCliente:r.codigo_cliente,direccion:r.direccion,estado:r.estado,updatedAt:r.updated_at})); }
+}
+
+// ---------- CIERRE DE MANTENIMIENTOS ----------
+let cierreMantMes=null, cierreMantId=null;
+function renderCierreMant(){
+  if(!cierreMantMes) cierreMantMes=todayStr().slice(0,7);
+  const lista=DB.mant.filter(m=>m.fecha.startsWith(cierreMantMes)).sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.codigoM||0)-(a.codigoM||0));
+  let html=`<div class="no-print"><div class="card"><label>Mes</label><input type="month" value="${cierreMantMes}" onchange="cierreMantMes=this.value; cierreMantId=null; render();"></div>`;
+  if(Number(DB.ajustes.precioHoraMantBs||0)===0) html+=`<div class="alert-banner alert-warn"><span class="tag">● Atención</span><span>No hay precio por hora de mantenimiento cargado. Definilo en Config → Mantenimiento.</span></div>`;
+  html+=`<div class="card">${lista.length? lista.map(m=>{ const c=calcMantenimiento(m); return `<div class="list-item" style="cursor:pointer;${m.id===cierreMantId?'background:var(--concrete);':''}" onclick="cierreMantId='${m.id}'; render();"><span><b>${mantCodigo(m)}</b> · ${m.fecha}${m.garantia?' · <span class="chip" style="background:var(--amber-soft);color:#7A4A18;">Garantía</span>':''}<br><span class="meta">${esc(m.obraNombre)}${m.notionObraId?'':' · sin vincular'}</span></span><span style="text-align:right;">${m.tipoCambio?fmtBs(c.cobroClienteBs):'<span class="meta">sin TC</span>'}<br>${chipNotion(m)}</span></div>`; }).join('') : '<div class="empty">No hay mantenimientos en este mes.</div>'}</div></div>`;
+  const m=DB.mant.find(x=>x.id===cierreMantId);
+  if(m) html+=renderInformeMant(m);
+  return html;
+}
+function renderInformeMant(m){
+  const c=calcMantenimiento(m), enc=personaNombre(m.personaId);
+  const equipo=mantMiembros(m).map(personaNombre).join(', ');
+  return `<div class="print-only print-head">TECNOSUISSE · Informe de mantenimiento</div>
+  <div class="section-title">Informe ${mantCodigo(m)}</div>
+  ${m.garantia?`<div class="alert-banner alert-warn"><span class="tag">Garantía</span><span>Mantenimiento por garantía: el cliente no paga. El total es el costo interno para Tecnosuisse.</span></div>`:''}
+  <div class="card">
+    <div class="area-mini"><span>Fecha</span><span>${m.fecha}</span></div>
+    <div class="area-mini"><span>Obra</span><span>${esc(m.obraNombre)}${m.notionObraId?'':' (sin vincular en Notion)'}</span></div>
+    <div class="area-mini"><span>Dirección</span><span>${esc(m.direccion||'—')}</span></div>
+    <div class="area-mini"><span>Encargado</span><span>${esc(enc)}</span></div>
+    <div class="area-mini"><span>Equipo (${c.personas} personas)</span><span>${esc(equipo)}</span></div>
+    <div class="area-mini"><span>Horario en obra</span><span>${m.horaIngreso||'—'} a ${m.horaSalida||'—'} (${fmtNum(c.horasTrabajo)} h)</span></div>
+    <div class="area-mini"><span>Transporte</span><span>${m.transporteMin} min (${fmtNum(c.horasTransporte)} h)</span></div>
+    <label>Detalle del trabajo</label><div style="white-space:pre-wrap;font-size:14px;">${esc(m.detalle||'—')}</div>
+  </div>
+  <div class="section-title">Piezas</div>
+  <div class="card">${m.items.length?`<table class="cierre-table"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>USD c/u</th><th>USD</th><th>Bs</th></tr></thead><tbody>${m.items.map(i=>`<tr><td>${esc(i.codigo)}</td><td>${esc(i.descripcion)}</td><td>${fmtNum(i.cantidad,0)}</td><td>${fmtNum(i.precioUsd)}</td><td>${fmtNum(i.precioUsd*i.cantidad)}</td><td>${m.tipoCambio?fmtNum(i.precioUsd*i.cantidad*m.tipoCambio):'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="meta">Sin piezas.</div>'}</div>
+  <div class="section-title">Cálculo</div>
+  <div class="card">
+    <div class="area-mini"><span>Tipo de cambio oficial BCB (${m.fecha})</span><span>${m.tipoCambio?fmtNum(m.tipoCambio):'<b style="color:var(--red);">falta</b>'}</span></div>
+    <div class="area-mini"><span>Piezas (USD ${fmtNum(c.itemsUsd)} × TC)</span><span>${fmtBs(c.itemsBs)}</span></div>
+    <div class="area-mini"><span>Trabajo: ${fmtNum(c.horasTrabajo)} h × ${c.personas} pers. × ${fmtBs(m.precioHoraBs)}/h</span><span>${fmtBs(c.manoObraBs)}</span></div>
+    <div class="area-mini"><span>Transporte: ${fmtNum(c.horasTransporte)} h × ${c.personas} pers. × ${fmtBs(m.precioHoraBs)}/h</span><span>${fmtBs(c.transporteBs)}</span></div>
+    <div class="area-mini"><span>Subtotal</span><span>${fmtBs(c.subtotalBs)}</span></div>
+    <div class="area-mini"><span>× Factor ${fmtNum(m.factor,3)}</span><span><b>${fmtBs(c.totalBs)}</b></span></div>
+  </div>
+  <div class="totales-box"><span>${m.garantia?'Cobro al cliente (garantía)':'Total a cobrar'}</span><span>${fmtBs(c.cobroClienteBs)}</span></div>
+  ${m.garantia?`<div class="totales-box" style="background:var(--steel);"><span>Costo interno de la garantía</span><span>${fmtBs(c.totalBs)}</span></div>`:''}
+  <div class="no-print">
+    <div class="card">
+      <label>Tipo de cambio (Bs/USD)</label>
+      <div class="row2"><input type="number" step="0.01" min="0" id="mant-tc" value="${m.tipoCambio||''}"><button class="btn small ghost" style="margin:0;" onclick="mantTcBcb('${m.id}')">Traer del BCB</button></div>
+      <button class="btn ghost" onclick="mantGuardarTc('${m.id}')">Guardar tipo de cambio</button>
+      <button class="btn ghost" onclick="mantAplicarAjustes('${m.id}')">Aplicar precio/hora y factor actuales (${fmtBs(DB.ajustes.precioHoraMantBs)} · ${fmtNum(DB.ajustes.factorMant,3)})</button>
+      ${m.notionEstado!=='ok'?`<button class="btn ghost" onclick="sincronizarMant('${m.id}')">Reintentar envío a Notion</button>${m.notionError?`<div class="flag-line f-crit">${esc(m.notionError)}</div>`:''}`:''}
+      <button class="btn" onclick="window.print()">🖨 Exportar a PDF</button>
+      ${m.notionEstado!=='ok'?`<button class="del" style="margin-top:10px;" onclick="borrarMant('${m.id}')">Eliminar este mantenimiento</button>`:''}
+    </div>
+  </div>`;
+}
+async function mantTcBcb(id){
+  const m=DB.mant.find(x=>x.id===id); if(!m) return;
+  try{
+    const {data,error}=await sb.functions.invoke('mantenimientos',{body:{action:'tipo_cambio',fecha:m.fecha}});
+    if(error) throw error; if(data.error) throw new Error(data.error);
+    document.getElementById('mant-tc').value=data.tc; toast(`TC BCB ${data.fecha}: ${data.tc}. Tocá "Guardar" para aplicarlo.`);
+  }catch(e){ toast('No se pudo consultar el BCB: '+(e.message||e)); }
+}
+async function mantGuardarTc(id){
+  const v=Number(document.getElementById('mant-tc').value);
+  if(!(v>0)) return toast('Tipo de cambio inválido');
+  const {error}=await sb.from('mantenimientos').update({tipo_cambio:v}).eq('id',id);
+  if(sbErr(error)) return; await recargarMant(); render(); toast('Tipo de cambio guardado ✓');
+}
+async function mantAplicarAjustes(id){
+  if(!confirm('¿Recalcular este mantenimiento con el precio por hora y el factor actuales?')) return;
+  const {error}=await sb.from('mantenimientos').update({precio_hora_bs:Number(DB.ajustes.precioHoraMantBs||0),factor:Number(DB.ajustes.factorMant||1.508)}).eq('id',id);
+  if(sbErr(error)) return; await recargarMant(); render(); toast('Recalculado ✓');
+}
+async function borrarMant(id){
+  if(!confirm('¿Eliminar este mantenimiento? No se puede deshacer.')) return;
+  const {error}=await sb.from('mantenimientos').delete().eq('id',id);
+  if(sbErr(error)) return; cierreMantId=null; await recargarMant(); render(); toast('Eliminado');
+}
+
+// ---------- CONFIG: MANTENIMIENTO ----------
+let mantImportPreview=null, mantCatQ='';
+function renderMantConfig(){
+  const ult=DB.notionObras.reduce((a,o)=>o.updatedAt>a?o.updatedAt:a,'');
+  return `<div class="card">
+    <label>Precio por hora de mantenimiento (Bs, por persona)</label>
+    <input type="number" step="0.5" min="0" id="aj-ph-mant" value="${DB.ajustes.precioHoraMantBs||''}" placeholder="Ej: 60">
+    <label>Factor multiplicador</label>
+    <input type="number" step="0.001" min="0" id="aj-factor-mant" value="${DB.ajustes.factorMant||1.508}">
+    <button class="btn" onclick="guardarAjustesMant()">Guardar</button>
+    <div class="meta" style="margin-top:8px;">Los cambios aplican a los mantenimientos que se registren desde ahora. Los ya registrados conservan su precio y factor (se pueden recalcular desde Cierre Mant.).</div>
+  </div>
+  <div class="section-title">Obras desde Notion</div>
+  <div class="card">
+    <div class="meta">${DB.notionObras.length} obras cargadas${ult?' · actualizado '+new Date(ult).toLocaleString('es-BO'):''}. Se excluyen las que están en Primer contacto, Cotizado, En negociación o Baja de cliente.</div>
+    <button class="btn ghost" id="btn-ref-obras" onclick="refrescarObrasNotion()">Actualizar obras desde Notion</button>
+  </div>
+  <div class="section-title">Ítems de mantenimiento (${DB.mantItems.length})</div>
+  <div class="card">
+    <label>Importar desde Excel (columnas: código, descripción, precio USD)</label>
+    <input type="file" accept=".xlsx,.xls,.csv" onchange="leerItemsExcel(this.files[0])">
+    ${mantImportPreview?renderMantPreview():''}
+    <div class="meta" style="margin-top:8px;">Si un código ya existe, se actualizan su descripción y precio. Los mantenimientos ya cargados no cambian: guardan el precio del momento.</div>
+  </div>
+  ${DB.mantItems.length?`<div class="card"><input type="text" placeholder="Buscar ítem…" value="${esc(mantCatQ)}" oninput="mantCatQ=this.value; document.getElementById('mant-cat').innerHTML=renderMantCatalogo();"><div id="mant-cat">${renderMantCatalogo()}</div></div>`:''}`;
+}
+function renderMantCatalogo(){
+  const q=mantCatQ.trim().toLowerCase();
+  const l=DB.mantItems.filter(i=>!q||i.codigo.toLowerCase().includes(q)||i.descripcion.toLowerCase().includes(q));
+  return l.slice(0,60).map(i=>`<div class="list-item"><span><b>${esc(i.codigo)}</b> · USD ${fmtNum(i.precioUsd)}<br><span class="meta">${esc(i.descripcion)}</span></span><button class="del" onclick="borrarItemMant('${i.id}')">Eliminar</button></div>`).join('')+(l.length>60?`<div class="meta">…y ${l.length-60} más. Usá el buscador.</div>`:'');
+}
+function normH(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,''); }
+function parsePrecio(v){
+  if(typeof v==='number') return v;
+  let s=String(v||'').replace(/usd|\$|\s/gi,'');
+  if(/,\d{1,2}$/.test(s)) s=s.replace(/\./g,'').replace(',','.'); else s=s.replace(/,/g,'');
+  return Number(s);
+}
+async function leerItemsExcel(file){
+  if(!file) return;
+  try{
+    const wb=XLSX.read(await file.arrayBuffer());
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+    let hi=-1, cc=-1, cd=-1, cp=-1;
+    for(let r=0;r<Math.min(rows.length,15);r++){
+      const h=rows[r].map(normH);
+      const c=h.findIndex(x=>x.startsWith('codigo')||x==='cod'), d=h.findIndex(x=>x.startsWith('descripcion')||x==='detalle'), p=h.findIndex(x=>x.includes('precio')||x.includes('usd'));
+      if(c>=0&&d>=0&&p>=0){ hi=r; cc=c; cd=d; cp=p; break; }
+    }
+    if(hi<0){ mantImportPreview={error:'No encontré las columnas "código", "descripción" y "precio" en las primeras filas de la primera hoja.'}; render(); return; }
+    const map=new Map(), errores=[];
+    rows.slice(hi+1).forEach((r,ix)=>{
+      const codigo=String(r[cc]).trim(), descripcion=String(r[cd]).trim(), precio=parsePrecio(r[cp]);
+      if(!codigo&&!descripcion) return;
+      if(!codigo||!descripcion||!isFinite(precio)||precio<0){ errores.push(`Fila ${hi+ix+2}: ${codigo||'(sin código)'}`); return; }
+      map.set(codigo,{codigo,descripcion,precio_usd:Math.round(precio*10000)/10000,activo:true,updated_at:new Date().toISOString()});
+    });
+    const filas=[...map.values()], existentes=new Set(DB.mantItems.map(i=>i.codigo));
+    mantImportPreview={archivo:file.name,filas,errores,nuevos:filas.filter(f=>!existentes.has(f.codigo)).length};
+  }catch(e){ mantImportPreview={error:'No se pudo leer el archivo: '+(e.message||e)}; }
+  render();
+}
+function renderMantPreview(){
+  const p=mantImportPreview;
+  if(p.error) return `<div class="flag-line f-crit" style="margin-top:8px;">⚠ ${esc(p.error)}</div>`;
+  return `<div class="detail-item"><b>${esc(p.archivo)}</b>: ${p.filas.length} ítems válidos (${p.nuevos} nuevos, ${p.filas.length-p.nuevos} a actualizar)${p.errores.length?` · <span style="color:var(--red);">${p.errores.length} filas con error</span>`:''}
+    <table class="cierre-table" style="margin-top:8px;"><thead><tr><th>Código</th><th>Descripción</th><th>USD</th></tr></thead><tbody>${p.filas.slice(0,8).map(f=>`<tr><td>${esc(f.codigo)}</td><td>${esc(f.descripcion)}</td><td>${fmtNum(f.precio_usd)}</td></tr>`).join('')}</tbody></table>
+    ${p.errores.length?`<div class="flag-line f-crit">${esc(p.errores.slice(0,10).join(' · '))}${p.errores.length>10?' …':''}</div>`:''}
+    <div class="actions"><button class="btn small" onclick="confirmarImportItems()">Importar ${p.filas.length} ítems</button><button class="btn small ghost" onclick="mantImportPreview=null; render();">Cancelar</button></div></div>`;
+}
+async function confirmarImportItems(){
+  const filas=mantImportPreview.filas;
+  for(let i=0;i<filas.length;i+=500){
+    const {error}=await sb.from('mant_items').upsert(filas.slice(i,i+500),{onConflict:'codigo'});
+    if(sbErr(error)) return;
+  }
+  mantImportPreview=null; await recargarCatalogos(); render(); toast(`${filas.length} ítems importados ✓`);
+}
+async function borrarItemMant(id){
+  if(!confirm('¿Eliminar este ítem del catálogo? Los mantenimientos que ya lo usaron no cambian.')) return;
+  const {error}=await sb.from('mant_items').delete().eq('id',id);
+  if(sbErr(error)) return; await recargarCatalogos(); render();
+}
+async function guardarAjustesMant(){
+  const ph=Number(document.getElementById('aj-ph-mant').value||0), fa=Number(document.getElementById('aj-factor-mant').value||0);
+  if(!(fa>0)) return toast('Factor inválido');
+  const {error}=await sb.from('ajustes').update({precio_hora_mant_bs:ph,factor_mant:fa}).eq('id',1);
+  if(sbErr(error)) return; DB.ajustes.precioHoraMantBs=ph; DB.ajustes.factorMant=fa; toast('Guardado ✓'); render();
+}
+async function refrescarObrasNotion(){
+  const b=document.getElementById('btn-ref-obras'); if(b){ b.disabled=true; b.textContent='Consultando Notion…'; }
+  try{
+    const {data,error}=await sb.functions.invoke('mantenimientos',{body:{action:'refrescar_obras'}});
+    if(error) throw error; if(data.error) throw new Error(data.error);
+    await recargarCatalogos(); render(); toast(`${data.obras} obras actualizadas desde Notion ✓`);
+  }catch(e){ render(); toast('No se pudo actualizar: '+(e.message||e)); }
+}
+
 // ---------- MAIN RENDER ----------
 function render(){
   const main=document.getElementById('main');
-  if(currentTab!=='captura' && !authenticated){ main.innerHTML=renderPasswordGate(); return; }
+  if(currentTab!=='captura' && currentTab!=='mantenimientos' && !authenticated){ main.innerHTML=renderPasswordGate(); return; }
   if(currentTab==='captura') main.innerHTML=renderCaptura();
+  else if(currentTab==='mantenimientos') main.innerHTML=renderMantenimientos();
+  else if(currentTab==='cierremant') main.innerHTML=renderCierreMant();
   else if(currentTab==='reportes') main.innerHTML=renderReportes();
   else if(currentTab==='cierre') main.innerHTML=renderCierre();
   else main.innerHTML=renderConfig();
-  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v18 · Supabase · Login</div>`;
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v19 · Supabase · Login</div>`;
   if(currentTab==='captura'){
     const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra'), selF=document.getElementById('cap-fecha');
     const updateDynamic=()=>{ capPersonaId=selP.value; capObraId=selO.value; capFecha=selF?selF.value:''; const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
