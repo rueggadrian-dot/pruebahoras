@@ -227,7 +227,7 @@ async function loadAll(){
   }));
 
   const aj=(ajustesR.data||[])[0];
-  DB.ajustes=aj? {costoHora:Number(aj.costo_hora),jornadaEstandar:Number(aj.jornada_estandar),horaEntradaTaller:t5(aj.hora_entrada_taller),precioHoraMantBs:Number(aj.precio_hora_mant_bs||0),factorMant:Number(aj.factor_mant||1.508)} : {costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00',precioHoraMantBs:0,factorMant:1.508};
+  DB.ajustes=aj? {costoHora:Number(aj.costo_hora),jornadaEstandar:Number(aj.jornada_estandar),horaEntradaTaller:t5(aj.hora_entrada_taller),precioHoraMantBs:Number(aj.precio_hora_mant_bs||0),factorMant:Number(aj.factor_mant||1.508),tipoCambio:aj.tipo_cambio==null?null:Number(aj.tipo_cambio),tipoCambioFecha:aj.tipo_cambio_fecha,tipoCambioAct:aj.tipo_cambio_actualizado,precioMallaBsM2:Number(aj.precio_malla_bs_m2||90)} : {costoHora:0,jornadaEstandar:9.5,horaEntradaTaller:'07:00',precioHoraMantBs:0,factorMant:1.508};
   await Promise.all([recargarMant(),recargarCatalogos()]);
 }
 
@@ -1285,10 +1285,20 @@ function exportarRespaldo(){
 
 // =================== MANTENIMIENTOS (v19) ===================
 let mantForm=null;
+async function invocarFn(body){
+  const {data,error}=await sb.functions.invoke('mantenimientos',{body});
+  if(error){
+    let msg=error.message;
+    try{ const j=await error.context.json(); if(j&&j.error) msg=j.error; }catch(_){}
+    throw new Error(msg);
+  }
+  if(data&&data.error&&!('ok' in data)) throw new Error(data.error);
+  return data;
+}
 function mantFormNuevo(){
   const enc=encargadosMant();
   return {encargadoId:enc.length===1?enc[0].id:'', fecha:todayStr(), obraTexto:'', notionObraId:null, direccion:'',
-    garantia:false, incluye:true, ayudantes:[], items:[], detalle:'', ingreso:'', salida:'', transporte:''};
+    garantia:false, incluye:true, ayudantes:[], items:[], mallas:[], detalle:'', ingreso:'', salida:'', transporte:''};
 }
 function encargadosMant(){ return DB.personas.filter(p=>p.areaId==='mantenimiento' && p.rol==='Encargado de Mantenimiento' && estaActivo(p)); }
 function minutosEntre(a,b){
@@ -1303,10 +1313,13 @@ function calcMantenimiento(m){
   const personas=mantMiembros(m).length;
   const tc=Number(m.tipoCambio||0), ph=Number(m.precioHoraBs||0), factor=Number(m.factor||0);
   const horasTrabajo=minutosEntre(m.horaIngreso,m.horaSalida)/60, horasTransporte=Number(m.transporteMin||0)/60;
-  const itemsUsd=(m.items||[]).reduce((s,i)=>s+Number(i.precioUsd)*Number(i.cantidad),0);
+  const itemsUsd=(m.items||[]).reduce((s,i)=>s+Number(i.precioUsd||0)*Number(i.cantidad),0);
+  const itemsPendientes=(m.items||[]).filter(i=>i.precioUsd===null||i.precioUsd===undefined).length;
+  const mallasM2=(m.mallas||[]).reduce((s,x)=>s+(Number(x.anchoMm)/1000)*(Number(x.altoMm)/1000)*Number(x.cantidad),0);
+  const mallasBs=(m.mallas||[]).reduce((s,x)=>s+(Number(x.anchoMm)/1000)*(Number(x.altoMm)/1000)*Number(x.cantidad)*Number(x.precioM2Bs),0);
   const itemsBs=itemsUsd*tc, manoObraBs=horasTrabajo*personas*ph, transporteBs=horasTransporte*personas*ph;
-  const subtotalBs=itemsBs+manoObraBs+transporteBs, totalBs=subtotalBs*factor;
-  return {personas,horasTrabajo,horasTransporte,itemsUsd,itemsBs,manoObraBs,transporteBs,subtotalBs,totalBs,cobroClienteBs:m.garantia?0:totalBs};
+  const subtotalBs=itemsBs+mallasBs+manoObraBs+transporteBs, totalBs=subtotalBs*factor;
+  return {personas,horasTrabajo,horasTransporte,itemsUsd,itemsPendientes,itemsBs,mallasM2,mallasBs,manoObraBs,transporteBs,subtotalBs,totalBs,cobroClienteBs:m.garantia?0:totalBs};
 }
 const fmtNum=(n,d=2)=>Number(n||0).toLocaleString('es-BO',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtBs=n=>'Bs '+fmtNum(n);
@@ -1353,6 +1366,20 @@ function renderMantenimientos(){
     ${DB.mantItems.length? `<input type="text" id="mant-item-q" placeholder="Buscar por código o descripción…" oninput="document.getElementById('mant-item-res').innerHTML=renderMantItemResultados(this.value)" autocomplete="off">
     <div id="mant-item-res"></div>` : `<div class="empty" style="padding:8px 0;">Todavía no hay ítems cargados. Se importan en Config → Mantenimiento.</div>`}
     <div id="mant-items-sel">${renderMantItemsSel()}</div>
+    <label style="margin-top:14px;">¿La pieza no está en la lista? Agregala a mano</label>
+    <div class="row2"><input type="text" id="mant-man-desc" placeholder="Descripción de la pieza"><input type="number" id="mant-man-cant" min="0.01" step="1" placeholder="Cantidad"></div>
+    <button class="btn small ghost" style="margin-top:8px;" onclick="mantAgregarManual()">+ Agregar pieza manual</button>
+    <div class="meta" style="margin-top:4px;">El precio de las piezas manuales lo completa administración en el cierre.</div>
+  </div>
+
+  <div class="section-title">Cambio de mallas</div>
+  <div class="card">
+    <div class="row3"><div><label>Ancho (mm)</label><input type="number" id="malla-ancho" min="1" step="1" placeholder="Ej: 1200"></div><div><label>Alto (mm)</label><input type="number" id="malla-alto" min="1" step="1" placeholder="Ej: 1000"></div><div><label>Cantidad</label><input type="number" id="malla-cant" min="1" step="1" value="1"></div></div>
+    <button class="btn small ghost" style="margin-top:8px;" onclick="mantAgregarMalla()">+ Agregar malla</button>
+    <div id="mant-mallas-sel">${renderMantMallasSel()}</div>
+  </div>
+
+  <div class="card">
     <label>Detalle del trabajo</label>
     <textarea placeholder="Qué se hizo y qué piezas se cambiaron" oninput="mantForm.detalle=this.value">${esc(f.detalle)}</textarea>
   </div>
@@ -1398,9 +1425,32 @@ function mantAgregarItem(id){
   document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();
   toast(it.codigo+' agregado');
 }
+function mantAgregarManual(){
+  const d=document.getElementById('mant-man-desc'), c=document.getElementById('mant-man-cant');
+  const desc=(d.value||'').trim(), cant=Number(c.value);
+  if(!desc) return toast('Escribí la descripción de la pieza');
+  if(!(cant>0)) return toast('Poné la cantidad');
+  mantForm.items.push({itemId:null,codigo:'MANUAL',descripcion:desc,precioUsd:null,cantidad:cant,esManual:true});
+  d.value=''; c.value='';
+  document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();
+  toast('Pieza manual agregada');
+}
+function mantAgregarMalla(){
+  const a=Number(document.getElementById('malla-ancho').value), h=Number(document.getElementById('malla-alto').value), c=Number(document.getElementById('malla-cant').value||1);
+  if(!(a>0)||!(h>0)) return toast('Completá ancho y alto en milímetros');
+  if(a>6000||h>6000) return toast('Revisá la medida: tiene que estar en milímetros');
+  if(!(c>0)) return toast('Cantidad inválida');
+  mantForm.mallas.push({anchoMm:a,altoMm:h,cantidad:c});
+  document.getElementById('malla-ancho').value=''; document.getElementById('malla-alto').value=''; document.getElementById('malla-cant').value='1';
+  document.getElementById('mant-mallas-sel').innerHTML=renderMantMallasSel();
+}
+function renderMantMallasSel(){
+  if(!mantForm.mallas.length) return `<div class="meta" style="padding:8px 0;">Ninguna malla agregada.</div>`;
+  return mantForm.mallas.map((x,ix)=>`<div class="list-item"><span>${x.cantidad} × ${x.anchoMm} × ${x.altoMm} mm<br><span class="meta">${fmtNum(x.anchoMm/1000*x.altoMm/1000*x.cantidad,3)} m²</span></span><button class="del" onclick="mantForm.mallas.splice(${ix},1); document.getElementById('mant-mallas-sel').innerHTML=renderMantMallasSel();">Quitar</button></div>`).join('');
+}
 function renderMantItemsSel(){
   if(!mantForm.items.length) return `<div class="meta" style="padding:8px 0;">Ninguna pieza agregada.</div>`;
-  return `<label>Piezas agregadas</label>`+mantForm.items.map((x,ix)=>`<div class="list-item"><span><b>${esc(x.codigo)}</b><br><span class="meta">${esc(x.descripcion)}</span></span><span style="display:flex;gap:6px;align-items:center;"><input type="number" min="0.01" step="1" value="${x.cantidad}" style="width:72px;" oninput="mantForm.items[${ix}].cantidad=this.value"><button class="del" onclick="mantForm.items.splice(${ix},1); document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();">Quitar</button></span></div>`).join('');
+  return `<label>Piezas agregadas</label>`+mantForm.items.map((x,ix)=>`<div class="list-item"><span><b>${x.esManual?'<span class="chip" style="margin:0;">manual</span>':esc(x.codigo)}</b><br><span class="meta">${esc(x.descripcion)}</span></span><span style="display:flex;gap:6px;align-items:center;"><input type="number" min="0.01" step="1" value="${x.cantidad}" style="width:72px;" oninput="mantForm.items[${ix}].cantidad=this.value"><button class="del" onclick="mantForm.items.splice(${ix},1); document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();">Quitar</button></span></div>`).join('');
 }
 async function guardarMantenimiento(){
   const f=mantForm;
@@ -1419,11 +1469,13 @@ async function guardarMantenimiento(){
   const {data,error}=await sb.from('mantenimientos').insert({
     fecha:f.fecha, persona_id:f.encargadoId, incluye_jefe:f.incluye, notion_obra_id:f.notionObraId, obra_nombre:nombre,
     direccion:f.direccion.trim(), garantia:f.garantia, detalle:f.detalle.trim(), hora_ingreso:f.ingreso, hora_salida:f.salida,
-    transporte_min:Math.round(Number(f.transporte)), precio_hora_bs:Number(DB.ajustes.precioHoraMantBs||0), factor:Number(DB.ajustes.factorMant||1.508)
+    transporte_min:Math.round(Number(f.transporte)), precio_hora_bs:Number(DB.ajustes.precioHoraMantBs||0), factor:Number(DB.ajustes.factorMant||1.508),
+    tipo_cambio:DB.ajustes.tipoCambio||null
   }).select().single();
   if(sbErr(error)){ if(btn){btn.disabled=false; btn.textContent='Guardar mantenimiento';} return; }
   if(f.ayudantes.length){ const {error:e}=await sb.from('mantenimientos_ayudantes').insert(f.ayudantes.map(pid=>({mantenimiento_id:data.id,persona_id:pid}))); sbErr(e); }
-  if(f.items.length){ const {error:e}=await sb.from('mantenimientos_items').insert(f.items.map(x=>({mantenimiento_id:data.id,item_id:x.itemId,codigo:x.codigo,descripcion:x.descripcion,precio_usd:x.precioUsd,cantidad:Number(x.cantidad)}))); sbErr(e); }
+  if(f.items.length){ const {error:e}=await sb.from('mantenimientos_items').insert(f.items.map(x=>({mantenimiento_id:data.id,item_id:x.itemId,codigo:x.codigo,descripcion:x.descripcion,precio_usd:x.esManual?null:x.precioUsd,cantidad:Number(x.cantidad),es_manual:!!x.esManual}))); sbErr(e); }
+  if(f.mallas.length){ const {error:e}=await sb.from('mantenimientos_mallas').insert(f.mallas.map(x=>({mantenimiento_id:data.id,ancho_mm:x.anchoMm,alto_mm:x.altoMm,cantidad:x.cantidad,precio_m2_bs:Number(DB.ajustes.precioMallaBsM2||90)}))); sbErr(e); }
   mantForm=mantFormNuevo(); mantForm.encargadoId=f.encargadoId;
   await recargarMant(); render();
   toast('Guardado ✓ Enviando a Notion…');
@@ -1431,24 +1483,25 @@ async function guardarMantenimiento(){
 }
 async function sincronizarMant(id, silencioso){
   try{
-    const {data,error}=await sb.functions.invoke('mantenimientos',{body:{action:'sincronizar',id}});
-    if(error) throw error;
+    const data=await invocarFn({action:'sincronizar',id});
     await recargarMant(); render();
-    if(data && data.ok) toast(`M${data.codigo_m} registrado en Notion ✓`);
+    if(data && data.ok && data.actualizado) toast(`M${data.codigo_m} actualizado en Notion ✓`);
+    else if(data && data.ok) toast(`M${data.codigo_m} registrado en Notion ✓`);
     else if(data && data.ya_sincronizado) toast('Ya estaba en Notion');
     else toast('Guardado, pero Notion falló: '+((data&&data.error)||'error desconocido'));
   }catch(e){ await recargarMant(); render(); toast('Guardado. Notion quedó pendiente: '+(e.message||e)); }
 }
 async function recargarMant(){
-  const [mR,aR,iR]=await Promise.all([sb.from('mantenimientos').select('*'),sb.from('mantenimientos_ayudantes').select('*'),sb.from('mantenimientos_items').select('*')]);
-  if(sbErr(mR.error)||sbErr(aR.error)||sbErr(iR.error)) return;
-  const ay={}, it={};
+  const [mR,aR,iR,lR]=await Promise.all([sb.from('mantenimientos').select('*'),sb.from('mantenimientos_ayudantes').select('*'),sb.from('mantenimientos_items').select('*'),sb.from('mantenimientos_mallas').select('*')]);
+  if(sbErr(mR.error)||sbErr(aR.error)||sbErr(iR.error)||sbErr(lR.error)) return;
+  const ay={}, it={}, ml={};
+  (lR.data||[]).forEach(r=>{(ml[r.mantenimiento_id]=ml[r.mantenimiento_id]||[]).push({id:r.id,anchoMm:Number(r.ancho_mm),altoMm:Number(r.alto_mm),cantidad:Number(r.cantidad),precioM2Bs:Number(r.precio_m2_bs)});});
   (aR.data||[]).forEach(r=>{(ay[r.mantenimiento_id]=ay[r.mantenimiento_id]||[]).push(r.persona_id);});
-  (iR.data||[]).forEach(r=>{(it[r.mantenimiento_id]=it[r.mantenimiento_id]||[]).push({id:r.id,itemId:r.item_id,codigo:r.codigo,descripcion:r.descripcion,precioUsd:Number(r.precio_usd),cantidad:Number(r.cantidad)});});
+  (iR.data||[]).forEach(r=>{(it[r.mantenimiento_id]=it[r.mantenimiento_id]||[]).push({id:r.id,itemId:r.item_id,codigo:r.codigo,descripcion:r.descripcion,precioUsd:r.precio_usd==null?null:Number(r.precio_usd),cantidad:Number(r.cantidad),esManual:!!r.es_manual});});
   DB.mant=(mR.data||[]).map(r=>({id:r.id,codigoM:r.codigo_m,fecha:r.fecha,personaId:r.persona_id,incluyeJefe:r.incluye_jefe,notionObraId:r.notion_obra_id,
     obraNombre:r.obra_nombre,direccion:r.direccion,garantia:r.garantia,detalle:r.detalle,horaIngreso:t5(r.hora_ingreso),horaSalida:t5(r.hora_salida),
     transporteMin:Number(r.transporte_min||0),tipoCambio:r.tipo_cambio==null?null:Number(r.tipo_cambio),precioHoraBs:Number(r.precio_hora_bs||0),factor:Number(r.factor||0),
-    notionPageId:r.notion_page_id,notionEstado:r.notion_estado,notionError:r.notion_error,createdAt:r.created_at||'',ayudantesIds:ay[r.id]||[],items:it[r.id]||[]}));
+    notionPageId:r.notion_page_id,notionEstado:r.notion_estado,notionError:r.notion_error,createdAt:r.created_at||'',ayudantesIds:ay[r.id]||[],items:it[r.id]||[],mallas:ml[r.id]||[]}));
 }
 async function recargarCatalogos(){
   const [cR,oR]=await Promise.all([sb.from('mant_items').select('*').order('codigo'),sb.from('notion_obras').select('*').order('nombre')]);
@@ -1463,7 +1516,7 @@ function renderCierreMant(){
   const lista=DB.mant.filter(m=>m.fecha.startsWith(cierreMantMes)).sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.codigoM||0)-(a.codigoM||0));
   let html=`<div class="no-print"><div class="card"><label>Mes</label><input type="month" value="${cierreMantMes}" onchange="cierreMantMes=this.value; cierreMantId=null; render();"></div>`;
   if(Number(DB.ajustes.precioHoraMantBs||0)===0) html+=`<div class="alert-banner alert-warn"><span class="tag">● Atención</span><span>No hay precio por hora de mantenimiento cargado. Definilo en Config → Mantenimiento.</span></div>`;
-  html+=`<div class="card">${lista.length? lista.map(m=>{ const c=calcMantenimiento(m); return `<div class="list-item" style="cursor:pointer;${m.id===cierreMantId?'background:var(--concrete);':''}" onclick="cierreMantId='${m.id}'; render();"><span><b>${mantCodigo(m)}</b> · ${m.fecha}${m.garantia?' · <span class="chip" style="background:var(--amber-soft);color:#7A4A18;">Garantía</span>':''}<br><span class="meta">${esc(m.obraNombre)}${m.notionObraId?'':' · sin vincular'}</span></span><span style="text-align:right;">${m.tipoCambio?fmtBs(c.cobroClienteBs):'<span class="meta">sin TC</span>'}<br>${chipNotion(m)}</span></div>`; }).join('') : '<div class="empty">No hay mantenimientos en este mes.</div>'}</div></div>`;
+  html+=`<div class="card">${lista.length? lista.map(m=>{ const c=calcMantenimiento(m); return `<div class="list-item" style="cursor:pointer;${m.id===cierreMantId?'background:var(--concrete);':''}" onclick="cierreMantId='${m.id}'; render();"><span><b>${mantCodigo(m)}</b> · ${m.fecha}${m.garantia?' · <span class="chip" style="background:var(--amber-soft);color:#7A4A18;">Garantía</span>':''}<br><span class="meta">${esc(m.obraNombre)}${m.notionObraId?'':' · sin vincular'}${c.itemsPendientes?' · <b style="color:#9A5A17;">'+c.itemsPendientes+' precio(s) pendiente(s)</b>':''}</span></span><span style="text-align:right;">${m.tipoCambio?fmtBs(c.cobroClienteBs):'<span class="meta">sin TC</span>'}<br>${chipNotion(m)}</span></div>`; }).join('') : '<div class="empty">No hay mantenimientos en este mes.</div>'}</div></div>`;
   const m=DB.mant.find(x=>x.id===cierreMantId);
   if(m) html+=renderInformeMant(m);
   return html;
@@ -1485,11 +1538,15 @@ function renderInformeMant(m){
     <label>Detalle del trabajo</label><div style="white-space:pre-wrap;font-size:14px;">${esc(m.detalle||'—')}</div>
   </div>
   <div class="section-title">Piezas</div>
-  <div class="card">${m.items.length?`<table class="cierre-table"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>USD c/u</th><th>USD</th><th>Bs</th></tr></thead><tbody>${m.items.map(i=>`<tr><td>${esc(i.codigo)}</td><td>${esc(i.descripcion)}</td><td>${fmtNum(i.cantidad,0)}</td><td>${fmtNum(i.precioUsd)}</td><td>${fmtNum(i.precioUsd*i.cantidad)}</td><td>${m.tipoCambio?fmtNum(i.precioUsd*i.cantidad*m.tipoCambio):'—'}</td></tr>`).join('')}</tbody></table>`:'<div class="meta">Sin piezas.</div>'}</div>
+  ${c.itemsPendientes?`<div class="alert-banner alert-warn no-print"><span class="tag">● Pendiente</span><span>${c.itemsPendientes} pieza(s) manual(es) sin precio. Completalas abajo: el total no es definitivo hasta entonces.</span></div>`:''}
+  <div class="card">${m.items.length?`<table class="cierre-table"><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>USD c/u</th><th>USD</th><th>Bs</th></tr></thead><tbody>${m.items.map(i=>`<tr><td>${i.esManual?'manual':esc(i.codigo)}</td><td>${esc(i.descripcion)}</td><td>${fmtNum(i.cantidad,0)}</td><td>${i.esManual?`<span class="no-print"><input type="number" step="0.01" min="0" id="pi-${i.id}" value="${i.precioUsd==null?'':i.precioUsd}" style="width:90px;padding:6px;"></span><span class="print-only">${i.precioUsd==null?'pendiente':fmtNum(i.precioUsd)}</span>`:fmtNum(i.precioUsd)}</td><td>${i.precioUsd==null?'—':fmtNum(i.precioUsd*i.cantidad)}</td><td>${(m.tipoCambio&&i.precioUsd!=null)?fmtNum(i.precioUsd*i.cantidad*m.tipoCambio):'—'}</td></tr>`).join('')}</tbody></table>
+    ${m.items.some(i=>i.esManual)?`<button class="btn small ghost no-print" style="margin-top:10px;" onclick="mantGuardarPreciosManuales('${m.id}')">Guardar precios de piezas manuales</button>`:''}`:'<div class="meta">Sin piezas.</div>'}</div>
+  ${m.mallas.length?`<div class="section-title">Mallas</div><div class="card"><table class="cierre-table"><thead><tr><th>Cant.</th><th>Ancho × Alto (mm)</th><th>m²</th><th>Bs/m²</th><th>Bs</th></tr></thead><tbody>${m.mallas.map(x=>{const a=x.anchoMm/1000*x.altoMm/1000*x.cantidad; return `<tr><td>${fmtNum(x.cantidad,0)}</td><td>${fmtNum(x.anchoMm,0)} × ${fmtNum(x.altoMm,0)}</td><td>${fmtNum(a,3)}</td><td>${fmtNum(x.precioM2Bs)}</td><td>${fmtNum(a*x.precioM2Bs)}</td></tr>`;}).join('')}</tbody></table></div>`:''}
   <div class="section-title">Cálculo</div>
   <div class="card">
-    <div class="area-mini"><span>Tipo de cambio oficial BCB (${m.fecha})</span><span>${m.tipoCambio?fmtNum(m.tipoCambio):'<b style="color:var(--red);">falta</b>'}</span></div>
-    <div class="area-mini"><span>Piezas (USD ${fmtNum(c.itemsUsd)} × TC)</span><span>${fmtBs(c.itemsBs)}</span></div>
+    <div class="area-mini"><span>Tipo de cambio aplicado (Bs/USD)</span><span>${m.tipoCambio?fmtNum(m.tipoCambio):'<b style="color:var(--red);">falta</b>'}</span></div>
+    <div class="area-mini"><span>Piezas (USD ${fmtNum(c.itemsUsd)} × TC)${c.itemsPendientes?' — sin '+c.itemsPendientes+' pendiente(s)':''}</span><span>${fmtBs(c.itemsBs)}</span></div>
+    ${m.mallas.length?`<div class="area-mini"><span>Mallas (${fmtNum(c.mallasM2,3)} m²)</span><span>${fmtBs(c.mallasBs)}</span></div>`:''}
     <div class="area-mini"><span>Trabajo: ${fmtNum(c.horasTrabajo)} h × ${c.personas} pers. × ${fmtBs(m.precioHoraBs)}/h</span><span>${fmtBs(c.manoObraBs)}</span></div>
     <div class="area-mini"><span>Transporte: ${fmtNum(c.horasTransporte)} h × ${c.personas} pers. × ${fmtBs(m.precioHoraBs)}/h</span><span>${fmtBs(c.transporteBs)}</span></div>
     <div class="area-mini"><span>Subtotal</span><span>${fmtBs(c.subtotalBs)}</span></div>
@@ -1500,7 +1557,7 @@ function renderInformeMant(m){
   <div class="no-print">
     <div class="card">
       <label>Tipo de cambio (Bs/USD)</label>
-      <div class="row2"><input type="number" step="0.01" min="0" id="mant-tc" value="${m.tipoCambio||''}"><button class="btn small ghost" style="margin:0;" onclick="mantTcBcb('${m.id}')">Traer del BCB</button></div>
+      <div class="row2"><input type="number" step="0.01" min="0" id="mant-tc" value="${m.tipoCambio||''}"><button class="btn small ghost" style="margin:0;" onclick="document.getElementById('mant-tc').value=DB.ajustes.tipoCambio||''">Usar el de Config (${DB.ajustes.tipoCambio?fmtNum(DB.ajustes.tipoCambio):'—'})</button></div>
       <button class="btn ghost" onclick="mantGuardarTc('${m.id}')">Guardar tipo de cambio</button>
       <button class="btn ghost" onclick="mantAplicarAjustes('${m.id}')">Aplicar precio/hora y factor actuales (${fmtBs(DB.ajustes.precioHoraMantBs)} · ${fmtNum(DB.ajustes.factorMant,3)})</button>
       ${m.notionEstado!=='ok'?`<button class="btn ghost" onclick="sincronizarMant('${m.id}')">Reintentar envío a Notion</button>${m.notionError?`<div class="flag-line f-crit">${esc(m.notionError)}</div>`:''}`:''}
@@ -1509,24 +1566,30 @@ function renderInformeMant(m){
     </div>
   </div>`;
 }
-async function mantTcBcb(id){
+async function mantGuardarPreciosManuales(id){
   const m=DB.mant.find(x=>x.id===id); if(!m) return;
-  try{
-    const {data,error}=await sb.functions.invoke('mantenimientos',{body:{action:'tipo_cambio',fecha:m.fecha}});
-    if(error) throw error; if(data.error) throw new Error(data.error);
-    document.getElementById('mant-tc').value=data.tc; toast(`TC BCB ${data.fecha}: ${data.tc}. Tocá "Guardar" para aplicarlo.`);
-  }catch(e){ toast('No se pudo consultar el BCB: '+(e.message||e)); }
+  const upd=[];
+  for(const i of m.items.filter(x=>x.esManual)){
+    const el=document.getElementById('pi-'+i.id); const v=el.value===''?null:Number(el.value);
+    if(v!==null && !(v>=0)) return toast('Precio inválido en '+i.descripcion);
+    upd.push({id:i.id,precio_usd:v});
+  }
+  for(const u of upd){ const {error}=await sb.from('mantenimientos_items').update({precio_usd:u.precio_usd}).eq('id',u.id); if(sbErr(error)) return; }
+  await recargarMant(); render(); toast('Precios guardados ✓');
+  if(m.notionEstado==='ok') await sincronizarMant(id);
 }
 async function mantGuardarTc(id){
   const v=Number(document.getElementById('mant-tc').value);
   if(!(v>0)) return toast('Tipo de cambio inválido');
   const {error}=await sb.from('mantenimientos').update({tipo_cambio:v}).eq('id',id);
   if(sbErr(error)) return; await recargarMant(); render(); toast('Tipo de cambio guardado ✓');
+  const m=DB.mant.find(x=>x.id===id); if(m && m.notionEstado==='ok') await sincronizarMant(id);
 }
 async function mantAplicarAjustes(id){
   if(!confirm('¿Recalcular este mantenimiento con el precio por hora y el factor actuales?')) return;
   const {error}=await sb.from('mantenimientos').update({precio_hora_bs:Number(DB.ajustes.precioHoraMantBs||0),factor:Number(DB.ajustes.factorMant||1.508)}).eq('id',id);
   if(sbErr(error)) return; await recargarMant(); render(); toast('Recalculado ✓');
+  const m=DB.mant.find(x=>x.id===id); if(m && m.notionEstado==='ok') await sincronizarMant(id);
 }
 async function borrarMant(id){
   if(!confirm('¿Eliminar este mantenimiento? No se puede deshacer.')) return;
@@ -1543,6 +1606,11 @@ function renderMantConfig(){
     <input type="number" step="0.5" min="0" id="aj-ph-mant" value="${DB.ajustes.precioHoraMantBs||''}" placeholder="Ej: 60">
     <label>Factor multiplicador</label>
     <input type="number" step="0.001" min="0" id="aj-factor-mant" value="${DB.ajustes.factorMant||1.508}">
+    <label>Precio de malla milimétrica (Bs por m²)</label>
+    <input type="number" step="0.5" min="0" id="aj-malla" value="${DB.ajustes.precioMallaBsM2||90}">
+    <label>Tipo de cambio oficial (Bs por USD)</label>
+    <input type="number" step="0.01" min="0" id="aj-tc" value="${DB.ajustes.tipoCambio||''}" placeholder="Ej: 11.70">
+    <div class="meta" style="margin-top:4px;">${DB.ajustes.tipoCambioFecha?'Cotización BCB del '+DB.ajustes.tipoCambioFecha:'Sin fecha de cotización'}${DB.ajustes.tipoCambioAct?' · cargado '+new Date(DB.ajustes.tipoCambioAct).toLocaleString('es-BO'):''}. Se actualiza solo cada lunes con el último publicado por el BCB; podés corregirlo a mano.</div>
     <button class="btn" onclick="guardarAjustesMant()">Guardar</button>
     <div class="meta" style="margin-top:8px;">Los cambios aplican a los mantenimientos que se registren desde ahora. Los ya registrados conservan su precio y factor (se pueden recalcular desde Cierre Mant.).</div>
   </div>
@@ -1619,15 +1687,23 @@ async function borrarItemMant(id){
 }
 async function guardarAjustesMant(){
   const ph=Number(document.getElementById('aj-ph-mant').value||0), fa=Number(document.getElementById('aj-factor-mant').value||0);
+  const malla=Number(document.getElementById('aj-malla').value||0), tcTxt=document.getElementById('aj-tc').value, tc=Number(tcTxt);
   if(!(fa>0)) return toast('Factor inválido');
-  const {error}=await sb.from('ajustes').update({precio_hora_mant_bs:ph,factor_mant:fa}).eq('id',1);
-  if(sbErr(error)) return; DB.ajustes.precioHoraMantBs=ph; DB.ajustes.factorMant=fa; toast('Guardado ✓'); render();
+  if(!(malla>=0)) return toast('Precio de malla inválido');
+  if(tcTxt!=='' && !(tc>1 && tc<100)) return toast('Tipo de cambio inválido');
+  const upd={precio_hora_mant_bs:ph,factor_mant:fa,precio_malla_bs_m2:malla};
+  const tcCambio = tcTxt!=='' && tc!==DB.ajustes.tipoCambio;
+  if(tcCambio){ upd.tipo_cambio=tc; upd.tipo_cambio_fecha=todayStr(); upd.tipo_cambio_actualizado=new Date().toISOString(); }
+  const {error}=await sb.from('ajustes').update(upd).eq('id',1);
+  if(sbErr(error)) return;
+  Object.assign(DB.ajustes,{precioHoraMantBs:ph,factorMant:fa,precioMallaBsM2:malla});
+  if(tcCambio) Object.assign(DB.ajustes,{tipoCambio:tc,tipoCambioFecha:todayStr(),tipoCambioAct:upd.tipo_cambio_actualizado});
+  toast('Guardado ✓'); render();
 }
 async function refrescarObrasNotion(){
   const b=document.getElementById('btn-ref-obras'); if(b){ b.disabled=true; b.textContent='Consultando Notion…'; }
   try{
-    const {data,error}=await sb.functions.invoke('mantenimientos',{body:{action:'refrescar_obras'}});
-    if(error) throw error; if(data.error) throw new Error(data.error);
+    const data=await invocarFn({action:'refrescar_obras'});
     await recargarCatalogos(); render(); toast(`${data.obras} obras actualizadas desde Notion ✓`);
   }catch(e){ render(); toast('No se pudo actualizar: '+(e.message||e)); }
 }
@@ -1642,7 +1718,7 @@ function render(){
   else if(currentTab==='reportes') main.innerHTML=renderReportes();
   else if(currentTab==='cierre') main.innerHTML=renderCierre();
   else main.innerHTML=renderConfig();
-  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v19 · Supabase · Login</div>`;
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v20 · Supabase · Login</div>`;
   if(currentTab==='captura'){
     const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra'), selF=document.getElementById('cap-fecha');
     const updateDynamic=()=>{ capPersonaId=selP.value; capObraId=selO.value; capFecha=selF?selF.value:''; const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
