@@ -134,6 +134,7 @@
     .card{ border:1px solid #ccc; box-shadow:none; break-inside:avoid; }
     .section-title{ break-after:avoid; }
   }
+.mant-grupo{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;margin:12px 0 4px;padding-bottom:3px;border-bottom:1px solid #e5e7eb;}
 </style>
 </head>
 <body>
@@ -1358,7 +1359,7 @@ function renderMantenimientos(){
   <div class="card">
     <label class="check-row"><input type="checkbox" ${f.incluye?'checked':''} onchange="mantForm.incluye=this.checked"> Me incluyo yo también</label>
     <label style="margin-top:12px;">¿Quiénes te acompañaron?</label>
-    ${equipo.length? equipo.map(p=>`<label class="check-row"><input type="checkbox" value="${p.id}" ${f.ayudantes.includes(p.id)?'checked':''} onchange="mantToggleAyudante(this.value,this.checked)"> ${esc(p.nombre)} <span class="badge ${areaInfo(p.areaId).badge}" style="margin-left:6px;">${areaInfo(p.areaId).nombre}</span></label>`).join('') : '<div class="empty" style="padding:8px 0;">No hay más personas cargadas.</div>'}
+    ${equipo.length? mantGruposEquipo(equipo).map(g=>`<div class="mant-grupo">${g.titulo}</div>`+g.personas.map(p=>`<label class="check-row"><input type="checkbox" value="${p.id}" ${f.ayudantes.includes(p.id)?'checked':''} onchange="mantToggleAyudante(this.value,this.checked)"> ${esc(p.nombre)}</label>`).join('')).join('') : '<div class="empty" style="padding:8px 0;">No hay más personas cargadas.</div>'}
   </div>
 
   <div class="section-title">Piezas utilizadas</div>
@@ -1409,6 +1410,15 @@ function mantObraInput(v){
   mantForm.notionObraId=o?o.id:null;
   if(o && o.direccion && !mantForm.direccion){ mantForm.direccion=o.direccion; const d=document.getElementById('mant-direccion'); if(d) d.value=o.direccion; }
   const e=document.getElementById('mant-obra-estado'); if(e) e.innerHTML=renderMantObraEstado();
+}
+// Acompañantes: primero el equipo de mantenimiento; después el resto agrupado por área (áreas y nombres en orden alfabético)
+function mantGruposEquipo(lista){
+  const cmp=(a,b)=>a.localeCompare(b,'es',{sensitivity:'base'});
+  const grupos={};
+  lista.forEach(p=>{ (grupos[p.areaId||'']=grupos[p.areaId||'']||[]).push(p); });
+  Object.values(grupos).forEach(g=>g.sort((a,b)=>cmp(a.nombre,b.nombre)));
+  const ids=Object.keys(grupos).sort((a,b)=> (a==='mantenimiento'?-1:b==='mantenimiento'?1:cmp(areaInfo(a).nombre,areaInfo(b).nombre)));
+  return ids.map(id=>({titulo:id==='mantenimiento'?'Equipo de mantenimiento':areaInfo(id).nombre, personas:grupos[id]}));
 }
 function mantToggleAyudante(id,on){ const s=new Set(mantForm.ayudantes); on?s.add(id):s.delete(id); mantForm.ayudantes=[...s]; }
 function renderMantItemResultados(q){
@@ -1718,7 +1728,7 @@ function render(){
   else if(currentTab==='reportes') main.innerHTML=renderReportes();
   else if(currentTab==='cierre') main.innerHTML=renderCierre();
   else main.innerHTML=renderConfig();
-  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v20 · Supabase · Login</div>`;
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v21 · Supabase · Login</div>`;
   if(currentTab==='captura'){
     const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra'), selF=document.getElementById('cap-fecha');
     const updateDynamic=()=>{ capPersonaId=selP.value; capObraId=selO.value; capFecha=selF?selF.value:''; const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
