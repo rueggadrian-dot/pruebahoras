@@ -160,6 +160,8 @@
     .section-title{ break-after:avoid; }
   }
 .mant-grupo{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;margin:12px 0 4px;padding-bottom:3px;border-bottom:1px solid #e5e7eb;}
+.qty-btn{width:34px;height:34px;border:1px solid var(--line);background:var(--paper);border-radius:4px;font-size:18px;font-weight:700;line-height:1;cursor:pointer;color:var(--ink);padding:0;}
+.qty-btn:active{background:var(--concrete);}
 </style>
 </head>
 <body>
@@ -1367,7 +1369,23 @@ function chipNotion(m){
   return `<span class="chip" style="background:var(--amber-soft);color:#7A4A18;">Notion: pendiente</span>`;
 }
 
+// Refresco automático de la lista de obras de Notion: al abrir Mantenimientos, si pasaron más de 15 minutos desde el último
+let _refObrasEnCurso=false;
+function mantAutoRefrescarObras(){
+  if(_refObrasEnCurso) return;
+  const ult=DB.notionObras.reduce((mx,o)=>o.updatedAt&&o.updatedAt>mx?o.updatedAt:mx,'');
+  if(ult && (Date.now()-new Date(ult).getTime())<15*60*1000) return;
+  _refObrasEnCurso=true;
+  invocarFn({action:'refrescar_obras'}).then(async()=>{
+    await recargarCatalogos();
+    const dl=document.getElementById('dl-notion-obras');
+    if(dl) dl.innerHTML=DB.notionObras.map(o=>`<option value="${esc(obraLabelNotion(o))}">`).join('');
+    if(mantForm && mantForm.obraTexto && !mantForm.notionObraId) mantObraInput(mantForm.obraTexto);
+    else { const e=document.getElementById('mant-obra-estado'); if(e) e.innerHTML=renderMantObraEstado(); }
+  }).catch(e=>console.warn('No se pudo refrescar obras de Notion',e)).finally(()=>{_refObrasEnCurso=false;});
+}
 function renderMantenimientos(){
+  setTimeout(mantAutoRefrescarObras,0);
   if(!mantForm) mantForm=mantFormNuevo();
   const f=mantForm, enc=encargadosMant();
   if(enc.length===0) return `<div class="empty"><strong>No hay encargado de mantenimiento</strong>Cargalo en Config → Equipos, área Mantenimiento.</div>`;
@@ -1402,7 +1420,7 @@ function renderMantenimientos(){
     <div id="mant-item-res"></div>` : `<div class="empty" style="padding:8px 0;">Todavía no hay ítems cargados. Se importan en Config → Mantenimiento.</div>`}
     <div id="mant-items-sel">${renderMantItemsSel()}</div>
     <label style="margin-top:14px;">¿La pieza no está en la lista? Agregala a mano</label>
-    <div class="row2"><input type="text" id="mant-man-desc" placeholder="Descripción de la pieza"><input type="number" id="mant-man-cant" min="0.01" step="1" placeholder="Cantidad"></div>
+    <div class="row2"><input type="text" id="mant-man-desc" placeholder="Descripción de la pieza"><input type="number" id="mant-man-cant" inputmode="numeric" min="1" step="1" value="1" placeholder="Cantidad"></div>
     <button class="btn small ghost" style="margin-top:8px;" onclick="mantAgregarManual()">+ Agregar pieza manual</button>
     <div class="meta" style="margin-top:4px;">El precio de las piezas manuales lo completa administración en el cierre.</div>
   </div>
@@ -1436,7 +1454,7 @@ function renderMantObraEstado(){
   const f=mantForm;
   if(!f.obraTexto) return `<div class="meta" style="margin-top:4px;">${DB.notionObras.length} obras disponibles desde Notion.</div>`;
   if(f.notionObraId) return `<div class="flag-line" style="color:var(--green);">✓ Vinculada a la obra de Notion</div>`;
-  return `<div class="flag-line f-warn">● No está en la lista de Notion: se guarda como <b>sin asignar</b>. Completá bien el nombre y la dirección.</div>`;
+  return `<div class="flag-line f-warn">● No está en la lista de Notion: se guarda como <b>obra nueva</b>. Completá bien el nombre y la dirección; al cerrarlo se puede crear en Notion.</div>`;
 }
 function mantObraInput(v){
   mantForm.obraTexto=v;
@@ -1473,8 +1491,8 @@ function mantAgregarManual(){
   const d=document.getElementById('mant-man-desc'), c=document.getElementById('mant-man-cant');
   const desc=(d.value||'').trim(), cant=Number(c.value);
   if(!desc) return toast('Escribí la descripción de la pieza');
-  if(!(cant>0)) return toast('Poné la cantidad');
-  mantForm.items.push({itemId:null,codigo:'MANUAL',descripcion:desc,precioUsd:null,cantidad:cant,esManual:true});
+  if(!(Number.isInteger(cant) && cant>=1)) return toast('La cantidad tiene que ser un número entero (1, 2, 3…)');
+  mantForm.items.push({itemId:null,codigo:'MANUAL',descripcion:desc,precioUsd:null,cantidad:cant,esManual:true}); c.value='1';
   d.value=''; c.value='';
   document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();
   toast('Pieza manual agregada');
@@ -1492,9 +1510,11 @@ function renderMantMallasSel(){
   if(!mantForm.mallas.length) return `<div class="meta" style="padding:8px 0;">Ninguna malla agregada.</div>`;
   return mantForm.mallas.map((x,ix)=>`<div class="list-item"><span>${x.cantidad} × ${x.anchoMm} × ${x.altoMm} mm<br><span class="meta">${fmtNum(x.anchoMm/1000*x.altoMm/1000*x.cantidad,3)} m²</span></span><button class="del" onclick="mantForm.mallas.splice(${ix},1); document.getElementById('mant-mallas-sel').innerHTML=renderMantMallasSel();">Quitar</button></div>`).join('');
 }
+function mantCant(ix,d){ const x=mantForm.items[ix]; if(!x) return; x.cantidad=Math.max(1,Math.round(Number(x.cantidad)||1)+d); document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel(); }
+function mantCantSet(ix,v){ const x=mantForm.items[ix]; if(!x) return; const n=Math.round(Number(v)); x.cantidad=(n>=1)?n:1; document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel(); }
 function renderMantItemsSel(){
   if(!mantForm.items.length) return `<div class="meta" style="padding:8px 0;">Ninguna pieza agregada.</div>`;
-  return `<label>Piezas agregadas</label>`+mantForm.items.map((x,ix)=>`<div class="list-item"><span><b>${x.esManual?'<span class="chip" style="margin:0;">manual</span>':esc(x.codigo)}</b><br><span class="meta">${esc(x.descripcion)}</span></span><span style="display:flex;gap:6px;align-items:center;"><input type="number" min="0.01" step="1" value="${x.cantidad}" style="width:72px;" oninput="mantForm.items[${ix}].cantidad=this.value"><button class="del" onclick="mantForm.items.splice(${ix},1); document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();">Quitar</button></span></div>`).join('');
+  return `<label>Piezas agregadas</label>`+mantForm.items.map((x,ix)=>`<div class="list-item"><span><b>${x.esManual?'<span class="chip" style="margin:0;">manual</span>':esc(x.codigo)}</b><br><span class="meta">${esc(x.descripcion)}</span></span><span style="display:flex;gap:6px;align-items:center;"><button type="button" class="qty-btn" onclick="mantCant(${ix},-1)" aria-label="Restar uno">−</button><input type="number" inputmode="numeric" min="1" step="1" value="${x.cantidad}" style="width:52px;text-align:center;padding:6px 2px;margin:0;" onchange="mantCantSet(${ix},this.value)"><button type="button" class="qty-btn" onclick="mantCant(${ix},1)" aria-label="Sumar uno">+</button><button class="del" onclick="mantForm.items.splice(${ix},1); document.getElementById('mant-items-sel').innerHTML=renderMantItemsSel();">Quitar</button></span></div>`).join('');
 }
 async function guardarMantenimiento(){
   const f=mantForm;
@@ -1507,7 +1527,7 @@ async function guardarMantenimiento(){
   if(minutosEntre(f.ingreso,f.salida)<=0) return toast('La hora de salida tiene que ser posterior al ingreso');
   if(f.transporte===''||Number(f.transporte)<0) return toast('Completá los minutos de transporte (0 si no hubo)');
   if((f.ayudantes.length+(f.incluye?1:0))===0) return toast('Seleccioná al menos una persona');
-  if(f.items.some(x=>!(Number(x.cantidad)>0))) return toast('Revisá las cantidades de las piezas');
+  if(f.items.some(x=>!(Number.isInteger(Number(x.cantidad)) && Number(x.cantidad)>=1))) return toast('Revisá las cantidades de las piezas: tienen que ser números enteros');
   const btn=document.getElementById('btn-guardar-mant'); if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
   const nombre=f.notionObraId? (DB.notionObras.find(o=>o.id===f.notionObraId)||{}).nombre||f.obraTexto : f.obraTexto.trim();
   const {data,error}=await sb.from('mantenimientos').insert({
@@ -1524,6 +1544,47 @@ async function guardarMantenimiento(){
   await recargarMant(); render();
   toast('Guardado ✓ Enviando a Notion…');
   await sincronizarMant(data.id, true);
+}
+// ---------- Obra que no estaba en Notion ----------
+const normTxt=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function obrasParecidas(nombre){
+  const pal=normTxt(nombre).split(/[^a-z0-9]+/).filter(w=>w.length>=4);
+  if(!pal.length) return [];
+  return DB.notionObras.filter(o=>{ const n=normTxt(o.nombre); return pal.some(w=>n.includes(w)); }).slice(0,8);
+}
+function renderMantSinObra(m){
+  const par=obrasParecidas(m.obraNombre);
+  return `<div class="card" style="border-left:4px solid var(--amber);">
+    <b>Obra sin vincular a Notion:</b> ${esc(m.obraNombre)}
+    ${par.length?`<div class="meta" style="margin-top:6px;">En Notion hay obras con nombre parecido. Si es una de ellas, vinculala en vez de crear otra:</div>`:''}
+    <label>Vincular a una obra que ya está en Notion</label>
+    <input type="text" list="dl-obras-vinc" id="vinc-obra-${m.id}" placeholder="Escribí para buscar…" autocomplete="off" value="">
+    <datalist id="dl-obras-vinc">${(par.length?par:DB.notionObras).map(o=>`<option value="${esc(obraLabelNotion(o))}">`).join('')}</datalist>
+    <button class="btn ghost" onclick="mantVincularObra('${m.id}')">Vincular</button>
+    <div class="meta" style="margin:12px 0 4px;">Si no existe en Notion:</div>
+    <button class="btn" onclick="mantCrearObraNotion('${m.id}')">Crear "${esc(m.obraNombre)}" en Notion (Obra entregada)</button>
+  </div>`;
+}
+async function mantVincularObra(id){
+  const m=DB.mant.find(x=>x.id===id); if(!m) return;
+  const v=(document.getElementById('vinc-obra-'+id)||{}).value||'';
+  const o=DB.notionObras.find(x=>obraLabelNotion(x)===v);
+  if(!o) return toast('Elegí una obra de la lista');
+  const upd={notion_obra_id:o.id}; if(!m.direccion && o.direccion) upd.direccion=o.direccion;
+  const {error}=await sb.from('mantenimientos').update(upd).eq('id',id); if(sbErr(error)) return;
+  toast('Vinculada a '+o.nombre+' ✓');
+  if(m.notionEstado==='ok') await sincronizarMant(id); else { await recargarMant(); render(); }
+}
+async function mantCrearObraNotion(id){
+  const m=DB.mant.find(x=>x.id===id); if(!m) return;
+  const par=obrasParecidas(m.obraNombre);
+  const aviso=par.length?`\n\nOjo: en Notion ya hay obras parecidas (${par.slice(0,4).map(o=>o.nombre).join(', ')}). Si es una de ellas, usá "Vincular".`:'';
+  if(!confirm(`Se va a crear la obra "${m.obraNombre}" en Notion (CRM VENTAS) con estado "Obra entregada", sin código de cliente ni carpeta de Drive.${aviso}\n\n¿Crear?`)) return;
+  try{
+    const data=await invocarFn({action:'crear_obra',id});
+    await Promise.all([recargarMant(),recargarCatalogos()]); render();
+    toast(data && data.ya_vinculada?'Ya estaba vinculada':'Obra creada en Notion y vinculada ✓');
+  }catch(e){ toast('No se pudo crear la obra: '+(e.message||e)); }
 }
 async function sincronizarMant(id, silencioso){
   try{
@@ -1548,7 +1609,8 @@ async function recargarMant(){
     notionPageId:r.notion_page_id,notionEstado:r.notion_estado,notionError:r.notion_error,createdAt:r.created_at||'',ayudantesIds:ay[r.id]||[],items:it[r.id]||[],mallas:ml[r.id]||[]}));
 }
 async function recargarCatalogos(){
-  const [cR,oR]=await Promise.all([sb.from('mant_items').select('*').order('codigo'),sb.from('notion_obras').select('*').order('nombre')]);
+  const leerObras=async()=>{ const out=[]; for(let i=0;i<20;i++){ const r=await sb.from('notion_obras').select('*').order('nombre').range(i*1000,i*1000+999); if(r.error) return {error:r.error}; out.push(...(r.data||[])); if((r.data||[]).length<1000) break; } return {data:out}; };
+  const [cR,oR]=await Promise.all([sb.from('mant_items').select('*').order('codigo'),leerObras()]);
   if(!cR.error) DB.mantItems=(cR.data||[]).map(r=>({id:r.id,codigo:r.codigo,descripcion:r.descripcion,precioUsd:Number(r.precio_usd),activo:r.activo}));
   if(!oR.error){ DB.notionObras=(oR.data||[]).map(r=>({id:r.notion_page_id,nombre:r.nombre,codigoCliente:r.codigo_cliente,direccion:r.direccion,estado:r.estado,updatedAt:r.updated_at})); }
 }
@@ -1604,6 +1666,7 @@ function renderInformeMant(m){
       <div class="row2"><input type="number" step="0.01" min="0" id="mant-tc" value="${m.tipoCambio||''}"><button class="btn small ghost" style="margin:0;" onclick="document.getElementById('mant-tc').value=DB.ajustes.tipoCambio||''">Usar el de Config (${DB.ajustes.tipoCambio?fmtNum(DB.ajustes.tipoCambio):'—'})</button></div>
       <button class="btn ghost" onclick="mantGuardarTc('${m.id}')">Guardar tipo de cambio</button>
       <button class="btn ghost" onclick="mantAplicarAjustes('${m.id}')">Aplicar precio/hora y factor actuales (${fmtBs(DB.ajustes.precioHoraMantBs)} · ${fmtNum(DB.ajustes.factorMant,3)})</button>
+      ${!m.notionObraId?renderMantSinObra(m):''}
       ${m.notionEstado!=='ok'?`<button class="btn ghost" onclick="sincronizarMant('${m.id}')">Reintentar envío a Notion</button>${m.notionError?`<div class="flag-line f-crit">${esc(m.notionError)}</div>`:''}`:''}
       <button class="btn" onclick="mantExportarProforma('${m.id}')">🖨 Exportar proforma a PDF</button>
       ${m.notionEstado!=='ok'?`<button class="del" style="margin-top:10px;" onclick="borrarMant('${m.id}')">Eliminar este mantenimiento</button>`:''}
@@ -1803,7 +1866,7 @@ function render(){
   else if(currentTab==='reportes') main.innerHTML=renderReportes();
   else if(currentTab==='cierre') main.innerHTML=renderCierre();
   else main.innerHTML=renderConfig();
-  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v22 · Supabase · Login</div>`;
+  main.innerHTML+=`<div class="footnote">Datos compartidos entre todos los responsables que usan este panel.<br>Tecnosuisse — Control de Producción v23 · Supabase · Login</div>`;
   if(currentTab==='captura'){
     const selP=document.getElementById('cap-persona'), selO=document.getElementById('cap-obra'), selF=document.getElementById('cap-fecha');
     const updateDynamic=()=>{ capPersonaId=selP.value; capObraId=selO.value; capFecha=selF?selF.value:''; const dyn=document.getElementById('cap-form-dynamic'); if(dyn) dyn.innerHTML=renderCapturaFormFor(selP.value,selO.value); };
